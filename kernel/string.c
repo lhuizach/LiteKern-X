@@ -1,7 +1,7 @@
 /* LiteKern X — the four functions GCC may emit calls to even in freestanding
  * code (struct copies, zero-initialisation). */
-#include <stddef.h>
 #include <stdint.h>
+#include "kernel/string.h"
 
 void *memset(void *dst, int c, size_t n)
 {

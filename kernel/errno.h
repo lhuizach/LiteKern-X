@@ -6,6 +6,7 @@
 
 #define EIO     5       /* I/O error */
 #define ENOMEM  12      /* out of memory / table full */
+#define EFAULT  14      /* bad address (e.g. a user pointer the kernel won't touch) */
 #define EBUSY   16      /* device or resource busy */
 #define ENODEV  19      /* no such device, or device not usable */
 #define EINVAL  22      /* invalid argument */

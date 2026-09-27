@@ -1,0 +1,40 @@
+/* LiteKern X — running code in ring 3 (Phase 1 §5).
+ *
+ * One user program at a time. user_exec() maps a flat binary at USER_BASE
+ * plus a stack below USER_STACK_TOP, runs it in ring 3 until it exits or is
+ * killed by a fault, then unmaps and frees everything. A fault in ring 3
+ * never takes the kernel down: the program is killed and user_exec returns. */
+#ifndef LKX_USER_H
+#define LKX_USER_H
+
+#include <stdint.h>
+#include "kernel/idt.h"
+
+#define USER_BASE        0x80000000u
+#define USER_TOP         0xc0000000u
+#define USER_STACK_TOP   (USER_TOP - 0x1000u)   /* one unmapped guard page above */
+#define USER_STACK_PAGES 4u
+#define USER_IMAGE_MAX   (1024u * 1024u)
+
+struct user_result {
+    int killed;         /* 1 if a fault ended the program */
+    uint32_t vector;    /* the exception that killed it */
+    int exit_code;      /* from the exit syscall, when not killed */
+};
+
+/* Load and run `image` (entry point = USER_BASE). Returns 0 once the program
+ * has finished (see *res), or -EINVAL / -ENOMEM if it couldn't be started. */
+int user_exec(const void *image, uint32_t size, struct user_result *res);
+
+/* 0 if [ptr, ptr+len) lies in user space and every page is mapped for ring 3
+ * (and writable, if `write`); -EFAULT otherwise. Check before touching any
+ * pointer that came from user space. */
+int user_check(uint32_t ptr, uint32_t len, int write);
+
+/* Called on a ring 3 fault after it has been reported: kill the program. */
+void user_kill(const struct int_frame *f) __attribute__((noreturn));
+
+/* The exit syscall. */
+void user_exit(int code) __attribute__((noreturn));
+
+#endif

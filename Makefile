@@ -6,7 +6,7 @@
 BUILD  ?= build
 KERNEL ?= c                 # c = the real kernel, stub = tests/boot/kernel-stub.asm
 EXTRA_CFLAGS ?=
-EXTRA_KERNEL_SRCS ?=        # extra C files linked into the kernel (test builds)
+EXTRA_KERNEL_SRCS ?=        # extra C / .asm files linked into the kernel (test builds)
 
 QEMU  := bash vm/qemu.sh
 IMAGE := $(BUILD)/litekernx.img
@@ -21,8 +21,13 @@ CFLAGS  := -m32 -march=i686 -mtune=bonnell -std=gnu11 -O2 -g \
            -mgeneral-regs-only -Wall -Wextra -Werror -I. $(EXTRA_CFLAGS)
 LIBGCC  := $(shell $(CC) -m32 -print-libgcc-file-name)
 
-KERNEL_OBJS := $(patsubst %.c,$(BUILD)/%.o,$(wildcard kernel/*.c drivers/*.c) $(EXTRA_KERNEL_SRCS)) \
-               $(patsubst %.asm,$(BUILD)/%.asm.o,$(wildcard kernel/*.asm))
+KERNEL_SRCS := $(wildcard kernel/*.c drivers/*.c kernel/*.asm) $(EXTRA_KERNEL_SRCS)
+KERNEL_OBJS := $(patsubst %.c,$(BUILD)/%.o,$(filter %.c,$(KERNEL_SRCS))) \
+               $(patsubst %.asm,$(BUILD)/%.asm.o,$(filter %.asm,$(KERNEL_SRCS)))
+
+# Ring 3 test programs: flat binaries at USER_BASE, embedded into self-test
+# kernels by tests/kernel/user_programs.asm.
+USER_TEST_BINS := $(patsubst %.asm,$(BUILD)/%.user.bin,$(wildcard tests/kernel/user/*.asm))
 
 .PHONY: all run debug test test-boot test-kernel smoke smoke-gui check-tools clean \
         vbox-create vbox vbox-test
@@ -35,9 +40,15 @@ $(BUILD)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -MMD -MP -c -o $@ $<
 
-$(BUILD)/kernel/%.asm.o: kernel/%.asm boot/bootinfo.inc
+$(BUILD)/%.asm.o: %.asm boot/bootinfo.inc
 	@mkdir -p $(dir $@)
-	nasm -f elf32 -I./ -o $@ $<
+	nasm -f elf32 -I./ -DUSER_BIN_DIR='"$(BUILD)/tests/kernel/user"' -o $@ $<
+
+$(BUILD)/tests/kernel/user_programs.asm.o: $(USER_TEST_BINS)
+
+$(BUILD)/%.user.bin: %.asm tests/kernel/user/user.inc
+	@mkdir -p $(dir $@)
+	$(NASM) -o $@ $<
 
 $(BUILD)/kernel.elf: $(KERNEL_OBJS) kernel/linker.ld
 	$(LD) -m elf_i386 --no-warn-rwx-segments -T kernel/linker.ld -o $@ $(KERNEL_OBJS) $(LIBGCC)

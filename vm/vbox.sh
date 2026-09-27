@@ -18,7 +18,8 @@ cd "$(dirname "$0")/.."
 VBM=${VBOXMANAGE:-"/mnt/c/Program Files/Oracle/VirtualBox/VBoxManage.exe"}
 VM="LiteKern X"
 DISK_UUID=4c4b5800-0000-4000-8000-000000000001
-IMAGE=build/litekernx.img
+IMAGE=${IMAGE:-build/litekernx.img}                 # e.g. IMAGE=build/test-user/litekernx.img
+WAIT_FOR=${WAIT_FOR:-'^\[boot\] ready'}             # `test` passes once a log line matches
 DIR=build/vbox
 VDI=$DIR/litekernx.vdi
 SERIAL_LOG=$DIR/serial.log
@@ -31,7 +32,9 @@ usage: vm/vbox.sh COMMAND
   update     convert build/litekernx.img to the VM's disk
   start      update, then boot the VM in a window
   test       update, boot headless, wait for "[boot] ready" (or a panic),
-             save a screenshot to build/vbox/screen.png, power off
+             save a screenshot to build/vbox/screen.png, power off.
+             IMAGE=... boots another image; WAIT_FOR=regex changes the line
+             waited for (e.g. a self-test's summary)
   stop       power the VM off
   status     show the VM's state
   destroy    unregister the VM and delete its files
@@ -104,7 +107,7 @@ test_boot() {
     vbm startvm "$VM" --type headless >/dev/null
     local i result=timeout
     for ((i = 0; i < 600; i++)); do
-        if grep -q '^\[boot\] ready' "$SERIAL_LOG" 2>/dev/null; then result=ready; break; fi
+        if tr -d '\r' <"$SERIAL_LOG" 2>/dev/null | grep -Eq "$WAIT_FOR"; then result=ready; break; fi
         if grep -q 'PANIC' "$SERIAL_LOG" 2>/dev/null; then result=panic; break; fi
         sleep 0.1
     done
@@ -114,9 +117,9 @@ test_boot() {
 
     tr -d '\r' <"$SERIAL_LOG" 2>/dev/null | sed '/^$/d; s/^/      /'
     case $result in
-        ready)   echo "PASS  VirtualBox boots LiteKern X to ready (screenshot: $DIR/screen.png)" ;;
+        ready)   echo "PASS  VirtualBox boots $IMAGE (screenshot: $DIR/screen.png)" ;;
         panic)   echo "FAIL  kernel panicked in VirtualBox"; exit 1 ;;
-        timeout) echo "FAIL  no \"[boot] ready\" within 60 s"; exit 1 ;;
+        timeout) echo "FAIL  no line matching $WAIT_FOR within 60 s"; exit 1 ;;
     esac
 }
 

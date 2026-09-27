@@ -1,11 +1,13 @@
-; LiteKern X — CPU exception entry stubs (vectors 0-31).
-; Each stub pushes a uniform frame (see struct int_frame in kernel/idt.h) and
-; calls exception_handler().
+; LiteKern X — interrupt entry stubs: CPU exceptions (vectors 0-31) and the
+; system call gate (int 0x80). Each stub builds a uniform frame (struct
+; int_frame in kernel/idt.h) and calls interrupt_handler().
 
 bits 32
 
-extern exception_handler
-global isr_stubs
+extern interrupt_handler
+global isr_stubs, isr_syscall
+
+KERNEL_DS equ 0x10
 
 %macro ISR_NOERR 1
 isr%1:
@@ -32,11 +34,29 @@ section .text
     %assign v v + 1
 %endrep
 
+isr_syscall:
+    push 0
+    push 0x80
+    jmp isr_common
+
 isr_common:
     pushad
+    push ds                         ; ring 3 arrives with user data segments:
+    push es                         ; save them and switch to the kernel's
+    push fs
+    push gs
+    mov ax, KERNEL_DS
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
     push esp                        ; struct int_frame *
-    call exception_handler
+    call interrupt_handler
     add esp, 4
+    pop gs
+    pop fs
+    pop es
+    pop ds
     popad
     add esp, 8                      ; vector + error code
     iretd

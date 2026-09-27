@@ -19,6 +19,13 @@ make -s BUILD=build/test-drivers EXTRA_CFLAGS=-DLKX_SELFTEST_DRIVERS EXTRA_KERNE
     build/test-drivers/litekernx.img >/dev/null || exit 1
 make -s BUILD=build/test-bad-driver "EXTRA_CFLAGS=-DLKX_SELFTEST_DRIVERS -DLKX_SELFTEST_BAD_DRIVER" \
     EXTRA_KERNEL_SRCS=$selftest_src build/test-bad-driver/litekernx.img >/dev/null || exit 1
+make -s BUILD=build/test-user EXTRA_CFLAGS=-DLKX_SELFTEST_USER \
+    "EXTRA_KERNEL_SRCS=tests/kernel/selftest_user.c tests/kernel/user_programs.asm" \
+    build/test-user/litekernx.img >/dev/null || exit 1
+make -s BUILD=build/test-kernel-null EXTRA_CFLAGS=-DLKX_SELFTEST_KERNEL_NULL \
+    build/test-kernel-null/litekernx.img >/dev/null || exit 1
+make -s BUILD=build/test-kernel-wp EXTRA_CFLAGS=-DLKX_SELFTEST_KERNEL_WP \
+    build/test-kernel-wp/litekernx.img >/dev/null || exit 1
 
 # boot_until IMAGE REGEX SECONDS [EXTRA QEMU ARGS] -> $out holds the serial output
 boot_until() {
@@ -64,6 +71,8 @@ check() {
 # the end of the line so a half-written line doesn't count.
 done_re='^drivers: .* without a driver.?$|^PANIC: .*\).?$'
 selftest_done_re='^selftest: drivers [0-9]+/[0-9]+ passed.?$|^PANIC: .*\).?$'
+user_done_re='^selftest: user [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$'
+panic_re='^PANIC: .*[0-9a-f)].?$'
 
 boot_until build/litekernx.img "$done_re" 20
 check "boots to ready with per-phase timing" \
@@ -72,6 +81,7 @@ check "boots to ready with per-phase timing" \
     '^\[boot\] t=[0-9]+ phase=bootloader dt=[0-9]+$' \
     '^\[boot\] t=[0-9]+ phase=vbe dt=[0-9]+$' \
     '^\[boot\] t=[0-9]+ phase=kernel_early dt=[0-9]+$' \
+    '^\[boot\] t=[0-9]+ phase=paging dt=[0-9]+$' \
     '^\[boot\] t=[0-9]+ phase=pci dt=[0-9]+$' \
     '^\[boot\] t=[0-9]+ phase=drivers dt=[0-9]+$' \
     '^\[boot\] t=[0-9]+ phase=first_frame dt=[0-9]+$' \
@@ -83,6 +93,12 @@ check "reports the BIOS memory map and display mode" \
     '^mem 0x0000000000100000-0x[0-9a-f]{16} usable$' \
     '^mem: 10[0-9]{2} MiB usable in [0-9]+ regions$' \
     '^fb 1024x768x32 pitch=4096 at 0x[0-9a-f]{8}$'
+
+check "turns on paging with the planned layout" \
+    '^mm: paging on; null page unmapped; kernel code read-only 0x00100000-0x[0-9a-f]{8}$' \
+    '^mm: RAM identity-mapped to 0x40000000; user space 0x80000000-0xbfffffff$' \
+    '^mm: framebuffer mapped 0xfd000000-' \
+    '^mm: [0-9]+ MiB free of [0-9]+ MiB managed$'
 
 check "enumerates QEMU's PCI devices" \
     '^pci 00:00\.0 8086:1237 class 06\.00\.00 rev [0-9a-f]{2} host bridge$' \
@@ -108,6 +124,26 @@ boot_until build/test-bad-driver/litekernx.img "$selftest_done_re" 20
 check "refuses a driver with a missing operation" \
     "^PANIC: driver selftest-bad: missing operation 'read' " \
     '!selftest: drivers'
+
+boot_until build/test-user/litekernx.img "$user_done_re" 30
+check "ring 3 programs: syscalls work, bad pointers refused, faults kill only the program" \
+    '^user: hello from ring 3$' \
+    '^user: killed by exception 14 \(#PF page fault\) at eip=0x8' \
+    '^  page fault: user read from 0x00100000 \(protection violation\)$' \
+    '^  page fault: user write to 0x00000000 \(page not present\)$' \
+    '^user: killed by exception 13 \(#GP general protection\)' \
+    '^selftest: user ([0-9]+)/\1 passed$' \
+    '!selftest: FAIL|PANIC'
+
+boot_until build/test-kernel-null/litekernx.img "$panic_re" 20
+check "a kernel null-pointer write panics (page 0 unmapped)" \
+    '^  page fault: kernel write to 0x00000000 \(page not present\)$' \
+    '^PANIC: page fault in the kernel at 0x00000000$'
+
+boot_until build/test-kernel-wp/litekernx.img "$panic_re" 20
+check "a kernel write to its own code panics (code is read-only)" \
+    '^  page fault: kernel write to 0x001[0-9a-f]{5} \(protection violation\)$' \
+    '^PANIC: page fault in the kernel at 0x001[0-9a-f]{5}$'
 
 boot_until build/litekernx.img "$done_re" 20 \
     -device pci-bridge,chassis_nr=1,id=br1 -device virtio-rng-pci,bus=br1,addr=3

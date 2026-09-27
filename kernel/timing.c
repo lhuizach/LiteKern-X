@@ -53,6 +53,11 @@ uint32_t tsc_mhz(void)
     return (uint32_t)(tsc_hz / 1000000);
 }
 
+uint32_t uptime_ms(void)
+{
+    return tsc_to_ms(rdtsc() - t0);
+}
+
 uint32_t tsc_to_ms(uint64_t ticks)
 {
     return (uint32_t)(ticks * 1000 / tsc_hz);

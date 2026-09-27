@@ -88,6 +88,12 @@ void vkprintf(const char *fmt, va_list ap)
     }
 }
 
+void kwrite(const char *s, unsigned n)
+{
+    while (n--)
+        serial_putc(*s++);
+}
+
 void kprintf(const char *fmt, ...)
 {
     va_list ap;

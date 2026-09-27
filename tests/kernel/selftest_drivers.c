@@ -136,4 +136,6 @@ void selftest_drivers_run(void)
     check(dev_write(NULL, "x", 1) == -ENODEV, "calls on a NULL device return -ENODEV");
 
     kprintf("selftest: drivers %d/%d passed\n", passed, passed + failed);
+    if (failed)
+        panic("driver self-test: %d checks failed", failed);
 }

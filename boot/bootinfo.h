@@ -12,6 +12,8 @@
 #define KERNEL_MAGIC      0x4b584b4cu   /* 'LKXK' */
 #define KERNEL_VERSION    1u
 
+#define BOOT_MMAP_MAX 32u       /* E820 entries stage 2 keeps */
+
 #define BI_FLAG_FB             (1u << 0)
 #define BI_FLAG_MMAP_TRUNCATED (1u << 1)
 

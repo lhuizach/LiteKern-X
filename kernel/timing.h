@@ -13,6 +13,9 @@
 void timing_init(const struct boot_info *bi);
 
 uint32_t tsc_mhz(void);
+
+/* Milliseconds since T0 (stage 1 entry). */
+uint32_t uptime_ms(void);
 uint32_t tsc_to_ms(uint64_t ticks);
 
 /* Record one phase that ran from TSC value `start` to `end`. */

@@ -55,13 +55,13 @@ Goal: a booting kernel with a working driver layer and basic hardware detection 
 - [x] One reference driver, actually exercised: `drivers/uart.c` (16550, COM1). Checked by an 18-point self-test build (`tests/kernel/selftest_drivers.c`) plus a missing-operation panic test. On the EeePC, which has no UART, it should report `com1 FAILED (ENODEV)`
 
 ## 5. Memory protection + system calls (~3.5 hrs)
-- [ ] Set up paging (or segmentation, but paging is the standard modern approach) on the N270 — it supports it
-- [ ] Kernel mode / user mode separation (CPU rings) — including a TSS so ring 3 → ring 0 transitions get a valid kernel stack
-- [ ] Basic page fault handler — even if it just halts cleanly for now, it must not corrupt kernel state
-- [ ] **System call entry** — a single `int 0x80` gate (DPL 3) with a syscall number table. This is how KERN86 apps in ring 3 will reach the kernel in Phase 2; without it ring separation has no front door
-  - Validate user pointers before the kernel touches them
-  - Start with 2–3 trivial syscalls (e.g. `write` to debug log, `exit`) and prove a ring 3 stub can call them
-- [ ] This is the step that turns "code that runs" into "an OS" — don't skip it even though it's the least visually rewarding part
+- [x] Set up paging (or segmentation, but paging is the standard modern approach) on the N270 — it supports it — `kernel/pmm.c` (bitmap frame allocator) + `kernel/vmm.c` (layout in `vmm.h`: null page unmapped, kernel code read-only with CR0.WP, RAM identity-mapped supervisor-only, user space 0x80000000–0xBFFFFFFF)
+- [x] Kernel mode / user mode separation (CPU rings) — including a TSS so ring 3 → ring 0 transitions get a valid kernel stack — `kernel/gdt.c`, `kernel/usermode.asm` (a dedicated trap stack, so a trap never lands on live kernel frames)
+- [x] Basic page fault handler — even if it just halts cleanly for now, it must not corrupt kernel state — goes further: a fault in ring 3 kills only that program and the kernel carries on (`kernel/idt.c`, `kernel/user.c`); a fault in ring 0 panics with the fault decoded
+- [x] **System call entry** — a single `int 0x80` gate (DPL 3) with a syscall number table. This is how KERN86 apps in ring 3 will reach the kernel in Phase 2; without it ring separation has no front door — `kernel/syscall.h` documents the ABI
+  - [x] Validate user pointers before the kernel touches them — `user_check()`; the self-test caught a wrap-around bug in it before it shipped
+  - [x] Start with 2–3 trivial syscalls (e.g. `write` to debug log, `exit`) and prove a ring 3 stub can call them — `exit`, `debug_write`, `uptime_ms`; 12-check ring 3 self-test passes in QEMU and VirtualBox
+- [x] This is the step that turns "code that runs" into "an OS" — don't skip it even though it's the least visually rewarding part
 
 ## 6. Core drivers, one at a time (~3.5 hrs)
 Port from v1 deliberately, not wholesale. Suggested order:
@@ -78,8 +78,8 @@ Each driver: implements full `driver_t` interface, tested in isolation, fails lo
 - [ ] Kernel boots, reaches "ready" state, with per-phase timing logged (measured from bootloader entry)
 - [ ] PCI enumeration prints detected devices independent of any driver
 - [ ] Driver registry works — display, keyboard, and touchpad drivers registered and callable
-- [ ] Paging + ring separation active — user/kernel mode actually enforced
-- [ ] A ring 3 test stub successfully makes a syscall and returns, and a bad pointer from ring 3 is rejected rather than crashing the kernel
+- [ ] Paging + ring separation active — user/kernel mode actually enforced *(done in QEMU + VirtualBox; tick after the EeePC run of `build/test-user/litekernx.img` stays navy)*
+- [ ] A ring 3 test stub successfully makes a syscall and returns, and a bad pointer from ring 3 is rejected rather than crashing the kernel *(same)*
 - [ ] No known broken/half-finished features present — if it's not done, it's not in this build
 
 **Do not start Phase 2 (GUI) until every box above is checked.**
