@@ -4,3 +4,4 @@ build/
 *.iso
 *.bin
 *.elf
+__pycache__/

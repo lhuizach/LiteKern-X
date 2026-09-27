@@ -8,6 +8,7 @@
 #include "drivers/builtin.h"
 #include "kernel/driver.h"
 #include "kernel/errno.h"
+#include "kernel/fb.h"
 #include "kernel/printk.h"
 
 static device_t *com3;
@@ -134,6 +135,41 @@ void selftest_drivers_run(void)
 
     check(device_find("no-such-device") == NULL, "device_find on an unknown name returns NULL");
     check(dev_write(NULL, "x", 1) == -ENODEV, "calls on a NULL device return -ENODEV");
+
+    /* Display driver (drivers/vbefb.c). Draws in the corners of the screen and
+     * reads the pixels back through the kernel's mapping of the framebuffer. */
+    device_t *fb = device_find("fb0");
+    struct fb_info info = { 0 };
+    check(fb && fb->state == DEVICE_BOUND, "fb0 is bound to the vbefb driver");
+    check(dev_ioctl(fb, FB_GET_INFO, &info) == 0 && info.width && info.height && info.bpp == 32 &&
+              info.pitch >= info.width * 4,
+          "FB_GET_INFO describes a 32 bpp mode");
+    uint32_t w = info.width, h = info.height;
+#define PIXEL(x, y) (((volatile uint32_t *)(info.phys_addr + (y) * info.pitch))[x])
+
+    struct fb_rect r1 = { 0, 0, 8, 8, 0x00123456 };
+    check(dev_ioctl(fb, FB_FILL_RECT, &r1) == 0 && PIXEL(3, 3) == 0x00123456 &&
+              PIXEL(8, 8) != 0x00123456,
+          "FB_FILL_RECT fills exactly the rectangle");
+    struct fb_rect r2 = { w - 4, h - 4, 50, 50, 0x00654321 };
+    check(dev_ioctl(fb, FB_FILL_RECT, &r2) == 0 && PIXEL(w - 1, h - 1) == 0x00654321,
+          "FB_FILL_RECT clips a rectangle that runs off the screen");
+    struct fb_rect r3 = { w + 10, 0, 5, 5, 0x00ffffff };
+    check(dev_ioctl(fb, FB_FILL_RECT, &r3) == 0, "a rectangle entirely off-screen draws nothing");
+
+    static const uint32_t pattern[] = { 0x00010203, 0x00040506, 0x00070809, 0x000a0b0c };
+    struct fb_blit b1 = { 20, 0, 2, 2, pattern, 2 };
+    check(dev_ioctl(fb, FB_BLIT, &b1) == 0 && PIXEL(20, 0) == pattern[0] &&
+              PIXEL(21, 0) == pattern[1] && PIXEL(20, 1) == pattern[2] && PIXEL(21, 1) == pattern[3],
+          "FB_BLIT copies pixels row by row");
+    struct fb_blit b2 = { 0, 0, 2, 2, NULL, 2 };
+    struct fb_blit b3 = { 0, 0, 2, 2, pattern, 1 };
+    check(dev_ioctl(fb, FB_BLIT, &b2) == -EINVAL && dev_ioctl(fb, FB_BLIT, &b3) == -EINVAL,
+          "FB_BLIT refuses a NULL source or a stride shorter than the width");
+    check(dev_ioctl(fb, 99, &info) == -ENOSYS && dev_ioctl(fb, FB_GET_INFO, NULL) == -EINVAL,
+          "unknown ioctl -> -ENOSYS, NULL argument -> -EINVAL");
+    check(dev_write(fb, "x", 1) == -ENOSYS, "the framebuffer is not a byte stream (write -> -ENOSYS)");
+#undef PIXEL
 
     kprintf("selftest: drivers %d/%d passed\n", passed, passed + failed);
     if (failed)

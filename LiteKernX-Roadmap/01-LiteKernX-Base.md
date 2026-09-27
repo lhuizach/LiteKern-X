@@ -25,7 +25,7 @@ Goal: a booting kernel with a working driver layer and basic hardware detection 
 - [x] Read BIOS-provided memory map and basic display mode (this is your zero-driver framebuffer + memory info) — `kernel/memmap.c`
 - [x] PCI bus enumeration — walk the bus, read vendor ID / device ID / class code for each device found — `kernel/pci.c`, follows PCI-to-PCI bridges (the EeePC's Ethernet/Wi-Fi sit behind PCIe root ports), results kept in `pci_devices[]` for §4
 - [x] Log/print what's detected, even if nothing is initialized yet — this proves enumeration works independently of drivers (verified in QEMU, incl. a bridge, and VirtualBox)
-- [ ] Real-hardware check: capture the EeePC's device list. It has no serial port, so this needs the on-screen log that arrives with the display driver (§6) — until then, record what `lspci -nn` shows under a Linux live USB for comparison
+- [ ] Real-hardware check: capture the EeePC's device list — now possible: it's on the on-screen boot log (§6.1)
 
 ## 4. Driver abstraction layer (~2 hrs)
 - [x] Define the fixed driver interface — implemented in `kernel/driver.h` (the source of truth; it adds a `pci_ids` match list to `driver_t` and keeps the PCI info behind `dev->pci`). Every call takes a `device_t *` so one driver can be bound to a specific enumerated device (and, later, to more than one), and `ioctl` gives non-stream devices like the framebuffer a clean escape hatch instead of abusing `read`/`write`:
@@ -65,7 +65,9 @@ Goal: a booting kernel with a working driver layer and basic hardware detection 
 
 ## 6. Core drivers, one at a time (~3.5 hrs)
 Port from v1 deliberately, not wholesale. Suggested order:
-1. [ ] Display/framebuffer driver (through the new interface — VBE linear framebuffer, exposed via `ioctl`)
+1. [x] Display/framebuffer driver (through the new interface — VBE linear framebuffer, exposed via `ioctl`) — `drivers/vbefb.c`, device `fb0`; `FB_GET_INFO` / `FB_FILL_RECT` / `FB_BLIT` (clipped), interface in `kernel/fb.h`; 9 display checks in the driver self-test
+   - [x] On-screen boot log (`kernel/console.c`), drawn only through `fb0`, using the video BIOS 8×16 font stage 2 locates (`boot_info` v2 `font_addr`). Replays everything logged since boot; background shows the status (navy ready / red panic). A debug console, not GUI work — it's what makes the EeePC (no serial port) debuggable
+   - [ ] Real-hardware check: the EeePC shows the boot log at 1024×600 — photograph it; it answers the §2 VBE-mode and §3 device-list checks too
 2. [ ] i8042 controller + keyboard driver
 3. [ ] Touchpad/mouse driver (PS/2 aux port on the same i8042 — basic 3-byte PS/2 packets are enough; Elantech/Synaptics extended modes are a Non-Goal). Needed by Phase 2's cursor
 4. [ ] Disk/storage driver, if needed at this stage

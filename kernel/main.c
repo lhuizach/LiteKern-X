@@ -1,6 +1,7 @@
 /* LiteKern X — kernel entry point (called from kernel/entry.asm). */
 #include "boot/bootinfo.h"
 #include "drivers/builtin.h"
+#include "kernel/console.h"
 #include "kernel/driver.h"
 #include "kernel/gdt.h"
 #include "kernel/idt.h"
@@ -84,11 +85,15 @@ void kmain(uint32_t magic, const struct boot_info *handoff)
 #ifdef LKX_SELFTEST_DRIVERS
     selftest_drivers_register();
 #endif
-    drivers_add_legacy_devices();
+    drivers_add_legacy_devices(bi);
     driver_probe_pci();
     uint64_t drivers_done = rdtsc();
     boot_phase("drivers", pci_done, drivers_done);
 
+    /* First frame: the on-screen log (replaying everything so far) if the
+     * display driver and font are there, else the plain status colour. */
+    if (console_init(device_find("fb0"), bi->font_addr) < 0)
+        kprintf("console: unavailable (no display or no BIOS font); status colour only\n");
     status_show(STATUS_READY);
     uint64_t ready = rdtsc();
     boot_phase("first_frame", drivers_done, ready);

@@ -37,6 +37,7 @@ These are first guesses. **Replace them with real measurements as soon as Phase 
 ## Known risks
 - **PS/2 resets are slow.** A full keyboard/mouse reset (`0xFF`) plus self-test can take hundreds of ms on real hardware. Avoid full resets if the BIOS has already initialised the i8042, or run them without blocking the boot.
 - **VBE calls on real hardware** go through the GMA 950 video BIOS and can be slow. Stage 2 walks the mode list once and stops at the first 1024×600 match. If `loaded->vbe` turns out to be large on the EeePC, hardcode that machine's 1024×600 mode number and try it first.
+- **The first frame is now a full console draw:** a screen fill plus one blit per character already logged. In the VMs this takes 5–31 ms. On the EeePC the VBE framebuffer is probably uncached, so every pixel write goes straight to the bus. If `first_frame` is large there, the fix is to draw into a RAM buffer and blit it once (Phase 2's renderer does this anyway), or to map the framebuffer write-combining.
 - **Disk reads through BIOS `int 13h`** are slow per call. Load the kernel in as few large reads as possible.
 
 ## Measurements log

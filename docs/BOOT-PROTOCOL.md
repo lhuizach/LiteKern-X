@@ -26,7 +26,7 @@ Stage 1 loads stage 2 to physical `0x8000` in a single BIOS `int 13h` extended (
 Stage 2 runs these steps in order:
 1. Initialise COM1 at 115200 8N1.
 2. Read the E820 memory map (at most 32 entries).
-3. Enable A20. It tries three things in turn: checking whether A20 is already on, then BIOS `int 15h AX=2401`, then port `0x92`.
+3. Enable A20. It tries three things in turn: checking whether A20 is already on, then BIOS `int 15h AX=2401`, then port `0x92`. Then it asks the video BIOS where its 8×16 font is.
 4. Read the kernel header, validate it, then read the whole image into the bounce buffer at `0x10000` in 64-sector (32 KiB) chunks.
 5. Set the VBE mode.
 6. Switch to 32-bit protected mode, copy the kernel to its load address, and zero its bss.
@@ -55,13 +55,16 @@ Stage 2 runs these steps in order:
 | A20 | Enabled |
 | Video | VBE graphics mode, described in `boot_info.fb_*` |
 
-**`struct boot_info`** holds the following. See `boot/bootinfo.h` for the exact layout.
-- Its magic and version.
+**`struct boot_info`** (version 2, 96 bytes) holds the following. See `boot/bootinfo.h` for the exact layout.
+- Its magic and version. Version 2 added `font_addr`.
 - The boot drive and flags. `BI_FLAG_FB` means the framebuffer fields are valid. `BI_FLAG_MMAP_TRUNCATED` means the BIOS reported more than 32 memory-map entries.
 - 5 TSC marks: stage 1 entry (T0), stage 2 entry, kernel loaded, VBE mode set, and kernel entry. The kernel converts them to ms once it has calibrated the TSC.
 - The E820 map's address and entry count.
 - The framebuffer's address, pitch, width, height and bpp.
 - The kernel's start address and `mem_end`.
+- `font_addr`: the physical address of the video BIOS's 8×16 font (256 glyphs × 16 bytes, in ROM below 1 MiB), from `int 10h AX=1130h BH=06h`. It's 0 if the BIOS didn't provide one, in which case the kernel has no on-screen console. This lookup can't fail the boot.
+
+Page 0 (which holds `boot_info` and the E820 map) is unmapped once the kernel turns paging on, so the kernel copies both first.
 
 ## Failures
 Every stage **fails loudly** instead of guessing. It prints `LKX stage<n>: <reason>` to the screen, mirrors it to COM1 and halts. Once the VBE mode is set, only COM1 shows these messages, but no failure paths exist after that point.

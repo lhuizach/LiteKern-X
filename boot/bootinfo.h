@@ -8,7 +8,7 @@
 #include <stddef.h>
 
 #define BOOT_INFO_MAGIC   0x42584b4cu   /* 'LKXB' as nasm stores it */
-#define BOOT_INFO_VERSION 1u
+#define BOOT_INFO_VERSION 2u    /* 2: adds font_addr */
 #define KERNEL_MAGIC      0x4b584b4cu   /* 'LKXK' */
 #define KERNEL_VERSION    1u
 
@@ -50,6 +50,7 @@ struct boot_info {
     uint32_t fb_bpp;
     uint32_t kernel_start;
     uint32_t kernel_end;
+    uint32_t font_addr;         /* video BIOS 8x16 font: 256 glyphs x 16 bytes, 0 if none */
 } __attribute__((packed));
 
 /* First bytes of the kernel image on disk. */
@@ -67,7 +68,8 @@ _Static_assert(offsetof(struct boot_info, tsc) == 16, "boot_info layout");
 _Static_assert(offsetof(struct boot_info, mmap_addr) == 56, "boot_info layout");
 _Static_assert(offsetof(struct boot_info, fb_addr) == 64, "boot_info layout");
 _Static_assert(offsetof(struct boot_info, kernel_end) == 88, "boot_info layout");
-_Static_assert(sizeof(struct boot_info) == 92, "boot_info layout");
+_Static_assert(offsetof(struct boot_info, font_addr) == 92, "boot_info layout");
+_Static_assert(sizeof(struct boot_info) == 96, "boot_info layout");
 _Static_assert(sizeof(struct kernel_header) == 24, "kernel_header layout");
 
 #endif

@@ -27,7 +27,7 @@ VBE_INFO        equ 0x3000          ; 512-byte VBE controller info scratch
 VBE_MODE_INFO   equ 0x3200          ; 256-byte VBE mode info scratch
 
 ; Layout checks against boot/bootinfo.h (assembly fails if they drift).
-    times -(bi_size != 92) db 0
+    times -(bi_size != 96) db 0
     times -(kh_size != 24) db 0
 
     dd 'LKX2'                       ; stage 1 checks this, then jumps to entry
@@ -59,6 +59,7 @@ entry:
 
     call read_e820
     call enable_a20
+    call get_bios_font
     call load_kernel
     mov bx, TSC_KERNEL_LOADED
     call mark_tsc
@@ -158,6 +159,31 @@ a20_on:
     ret
 .on:
     cmp al, al                      ; set ZF
+    ret
+
+; --- 3b. font -----------------------------------------------------------------
+
+; Ask the video BIOS where its 8x16 font lives, for the kernel's on-screen
+; log. Not fatal: without it the kernel just has no text console.
+get_bios_font:
+    push es
+    push bp
+    mov ax, 0x1130
+    mov bh, 6                       ; 8x16 font
+    xor bp, bp
+    int 0x10                        ; -> ES:BP font, CX bytes per glyph
+    cmp cx, 16
+    jne .done
+    mov ax, es                      ; physical address = ES * 16 + BP
+    movzx eax, ax
+    shl eax, 4
+    movzx ebx, bp
+    add eax, ebx
+    jz .done                        ; 0000:0000 means "no font"
+    mov [BOOT_INFO_ADDR + bi.font_addr], eax
+.done:
+    pop bp
+    pop es
     ret
 
 ; --- 4. kernel ----------------------------------------------------------------

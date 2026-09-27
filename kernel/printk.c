@@ -1,13 +1,36 @@
 #include <stdint.h>
+#include "kernel/console.h"
 #include "kernel/printk.h"
 #include "kernel/serial.h"
 #include "kernel/status.h"
 #include "kernel/io.h"
 
+/* Everything logged since boot, so the on-screen console can replay it once
+ * the display driver is up. Once full, later output still goes to serial and
+ * the console, just not into the buffer. */
+static char log_buf[16 * 1024];
+static uint32_t log_len;
+static int panicking;
+
+static void out(char c)
+{
+    serial_putc(c);
+    if (log_len < sizeof(log_buf))
+        log_buf[log_len++] = c;
+    if (panicking < 2)
+        console_putc(c);
+}
+
+const char *printk_log(uint32_t *len)
+{
+    *len = log_len;
+    return log_buf;
+}
+
 static void put_str(const char *s)
 {
     while (*s)
-        serial_putc(*s++);
+        out(*s++);
 }
 
 static void put_uint(uint64_t v, unsigned base, int width, char pad)
@@ -19,16 +42,16 @@ static void put_uint(uint64_t v, unsigned base, int width, char pad)
         v /= base;
     } while (v);
     while (width-- > n)
-        serial_putc(pad);
+        out(pad);
     while (n)
-        serial_putc(buf[--n]);
+        out(buf[--n]);
 }
 
 void vkprintf(const char *fmt, va_list ap)
 {
     for (; *fmt; fmt++) {
         if (*fmt != '%') {
-            serial_putc(*fmt);
+            out(*fmt);
             continue;
         }
         fmt++;
@@ -53,12 +76,12 @@ void vkprintf(const char *fmt, va_list ap)
             break;
         }
         case 'c':
-            serial_putc((char)va_arg(ap, int));
+            out((char)va_arg(ap, int));
             break;
         case 'd': {
             int v = va_arg(ap, int);
             if (v < 0) {
-                serial_putc('-');
+                out('-');
                 put_uint(-(uint32_t)v, 10, width ? width - 1 : 0, pad);
             } else {
                 put_uint((uint32_t)v, 10, width, pad);
@@ -76,13 +99,13 @@ void vkprintf(const char *fmt, va_list ap)
             put_uint((uint32_t)va_arg(ap, void *), 16, 8, '0');
             break;
         case '%':
-            serial_putc('%');
+            out('%');
             break;
         case '\0':
             return;
         default:                    /* unknown: print it verbatim */
-            serial_putc('%');
-            serial_putc(*fmt);
+            out('%');
+            out(*fmt);
             break;
         }
     }
@@ -91,7 +114,7 @@ void vkprintf(const char *fmt, va_list ap)
 void kwrite(const char *s, unsigned n)
 {
     while (n--)
-        serial_putc(*s++);
+        out(*s++);
 }
 
 void kprintf(const char *fmt, ...)
@@ -106,6 +129,16 @@ void panic(const char *fmt, ...)
 {
     va_list ap;
     __asm__ volatile("cli");
+    /* A panic while panicking (e.g. a fault while drawing the first panic)
+     * stays on serial only and skips the screen. */
+    if (++panicking > 1) {
+        put_str("\nPANIC (nested): ");
+        va_start(ap, fmt);
+        vkprintf(fmt, ap);
+        va_end(ap);
+        put_str("\n");
+        halt_forever();
+    }
     put_str("\nPANIC: ");
     va_start(ap, fmt);
     vkprintf(fmt, ap);

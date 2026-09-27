@@ -1,9 +1,9 @@
-/* LiteKern X — boot status as a full-screen colour.
+/* LiteKern X — boot status shown on screen.
  *
- * The EeePC has no serial port and there is no text console until the display
- * driver exists (Phase 1 §6), so on real hardware this colour is the only
- * sign of how boot went. Not a display driver: one fill, no fonts, no state
- * beyond the framebuffer info stage 2 handed over. */
+ * Once the on-screen console is up (kernel/console.h), the status is its
+ * background colour behind the log. Before that — or if there is no console
+ * (no BIOS font) — it is a full-screen fill straight to the framebuffer, the
+ * only sign of life the EeePC (no serial port) can give that early. */
 #ifndef LKX_STATUS_H
 #define LKX_STATUS_H
 

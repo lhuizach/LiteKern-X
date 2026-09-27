@@ -28,11 +28,15 @@ make -s BUILD=build/test-kernel-wp EXTRA_CFLAGS=-DLKX_SELFTEST_KERNEL_WP \
     build/test-kernel-wp/litekernx.img >/dev/null || exit 1
 
 # boot_until IMAGE REGEX SECONDS [EXTRA QEMU ARGS] -> $out holds the serial output
+# With SCREEN="check ..." set, also takes a screenshot once REGEX matched and
+# appends tests/lib/screendump.py's "screen: ..." lines for those checks to $out.
 boot_until() {
-    local img=$1 re=$2 secs=$3 log pid i
+    local img=$1 re=$2 secs=$3 log pid i sock=/tmp/lkx-test-mon-$$.sock
+    local shot=build/test-screens/$(basename "$(dirname "$img")").png
     shift 3
     log=$(mktemp)
-    bash vm/qemu.sh --headless --image "$img" -- "$@" >"$log" 2>&1 &
+    rm -f "$sock"
+    bash vm/qemu.sh --headless --image "$img" -- -monitor "unix:$sock,server,nowait" "$@" >"$log" 2>&1 &
     pid=$!
     for ((i = 0; i < secs * 10; i++)); do
         grep -Eq "$re" "$log" && break
@@ -40,11 +44,19 @@ boot_until() {
         sleep 0.1
     done
     sleep 0.3       # REGEX matched the last expected line; let the rest of the output land
+    if [ -n "${SCREEN:-}" ]; then
+        mkdir -p build/test-screens
+        python3 tests/lib/screendump.py shot "$sock" "$shot" &&
+            screen_out=$(python3 tests/lib/screendump.py check "$shot" $SCREEN)
+    fi
     kill "$pid" 2>/dev/null
     wait "$pid" 2>/dev/null
     out=$(tr -d '\r' <"$log" | grep -v '^qemu-system-i386: terminating')
-    rm -f "$log"
+    [ -n "${SCREEN:-}" ] && out+=$'\n'"${screen_out:-screen: no screenshot}"
+    rm -f "$log" "$sock"
 }
+
+NAVY=1e3a5f TEXT=c8d0dc RED=801010 WHITE=ffffff
 
 # check NAME: all remaining args are regexes that must each match a line;
 # a regex prefixed with ! must match no line.
@@ -74,7 +86,7 @@ selftest_done_re='^selftest: drivers [0-9]+/[0-9]+ passed.?$|^PANIC: .*\).?$'
 user_done_re='^selftest: user [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$'
 panic_re='^PANIC: .*[0-9a-f)].?$'
 
-boot_until build/litekernx.img "$done_re" 20
+SCREEN="corner= has=$TEXT@0,16,100,32" boot_until build/litekernx.img "$done_re" 20
 check "boots to ready with per-phase timing" \
     '^LiteKern X$' \
     '^\[boot\] tsc=[0-9]+ MHz' \
@@ -107,12 +119,18 @@ check "enumerates QEMU's PCI devices" \
     '^pci 00:02\.0 1234:1111 class 03\.00\.00 rev [0-9a-f]{2} VGA controller$' \
     '^pci: [0-9]+ devices on 1 buses$'
 
-check "binds the COM1 reference driver" \
+check "binds the COM1 and display drivers" \
     '^dev com1 driver=uart16550 bound$' \
-    '^drivers: 1 registered, 1 devices bound, 0 failed; [0-9]+ PCI devices without a driver$'
+    '^dev fb0 driver=vbefb bound$' \
+    '^drivers: 2 registered, 2 devices bound, 0 failed; [0-9]+ PCI devices without a driver$'
+
+check "shows the boot log on screen (navy = ready)" \
+    '^console: 128x48 characters, video BIOS font at 0x[0-9a-f]{5}$' \
+    "^screen: corner $NAVY$" \
+    "^screen: has $TEXT in 0,16,100,32: yes$"
 
 boot_until build/test-drivers/litekernx.img "$selftest_done_re" 20
-check "driver layer self-test (PCI matching, failures, -ENOSYS, shutdown)" \
+check "driver layer + display driver self-test" \
     '^dev pci 00:01\.1 driver=selftest-ide bound$' \
     '^dev pci 00:02\.0 driver=selftest-fail FAILED \(EIO\)$' \
     '^dev com3 driver=uart16550 FAILED \(ENODEV\)$' \
@@ -135,10 +153,12 @@ check "ring 3 programs: syscalls work, bad pointers refused, faults kill only th
     '^selftest: user ([0-9]+)/\1 passed$' \
     '!selftest: FAIL|PANIC'
 
-boot_until build/test-kernel-null/litekernx.img "$panic_re" 20
-check "a kernel null-pointer write panics (page 0 unmapped)" \
+SCREEN="corner= has=$WHITE@0,16,100,32" boot_until build/test-kernel-null/litekernx.img "$panic_re" 20
+check "a kernel null-pointer write panics (page 0 unmapped), log shown on red" \
     '^  page fault: kernel write to 0x00000000 \(page not present\)$' \
-    '^PANIC: page fault in the kernel at 0x00000000$'
+    '^PANIC: page fault in the kernel at 0x00000000$' \
+    "^screen: corner $RED$" \
+    "^screen: has $WHITE in 0,16,100,32: yes$"
 
 boot_until build/test-kernel-wp/litekernx.img "$panic_re" 20
 check "a kernel write to its own code panics (code is read-only)" \

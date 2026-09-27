@@ -2,17 +2,18 @@
 
 A from-scratch 32-bit x86 OS for the ASUS EeePC 1000HE (Intel Atom N270). It's a clean-slate rewrite of LiteKern v1 that keeps the KERN86 app model (`.lkx`, `kerns.json`, `kern86.h`).
 
-**Status:** Phase 1, sections 1–5 are done in the VMs. The bootloader is stage 1 + stage 2. The C kernel:
+**Status:** Phase 1, sections 1–5 and the display driver (§6.1) are done in the VMs. The bootloader is stage 1 + stage 2. The C kernel:
 - sets up its GDT/IDT/TSS and calibrates the TSC
 - turns on paging: null pointers fault, kernel code is read-only, user space is 2–3 GiB
 - reports the memory map, display mode and every PCI device
-- binds drivers through a fixed driver interface (so far one reference driver, the COM1 UART)
+- binds drivers through a fixed driver interface: the COM1 UART and the VBE framebuffer display driver
+- shows its log on screen (so the EeePC, which has no serial port, can be debugged)
 - can run a program in ring 3 with `int 0x80` system calls; a fault in the program kills only the program
 - logs per-phase boot times and reaches "ready"
 
 None of this has been verified on the real EeePC yet.
 
-On real hardware there's no serial port, so the screen colour is the only status signal for now: **navy means ready, dark red means panic**.
+**What you see:** the kernel log appears on screen, in the video BIOS font, as soon as the display driver is up. It includes everything logged since boot. The background shows the outcome: **navy means ready, dark red means panic**, with the fault and registers on screen. The same log goes to COM1 (the VM's serial log). If there's no font or no display, the screen is just filled with the status colour.
 
 - Plan: [`LiteKernX-Roadmap/`](LiteKernX-Roadmap/). The phase files there are the source of truth.
 - [Non-Goals](docs/NON-GOALS.md)
@@ -24,8 +25,8 @@ LiteKernX-Roadmap/   the plan, phase by phase
 boot/                custom bootloader (stage 1 MBR, stage 2) + boot_info layout — see docs/BOOT-PROTOCOL.md
 kernel/              C kernel: entry, GDT/IDT/TSS, exceptions, TSC timing, memory map,
                      frame allocator + paging, PCI scan, driver layer (driver.h),
-                     ring 3 + syscalls (user.c, syscall.h), serial log
-drivers/             drivers behind the driver_t interface (uart.c) + builtin.c list
+                     ring 3 + syscalls (user.c, syscall.h), on-screen console, log
+drivers/             drivers behind the driver_t interface (uart.c, vbefb.c) + builtin.c list
 docs/                non-goals, boot budget, boot protocol
 tests/boot/          bootloader tests + the stage 2 / kernel stubs they boot
 tests/kernel/        kernel tests (boot log, memory map, paging, PCI incl. bridges, driver

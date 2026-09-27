@@ -8,7 +8,7 @@ BOOT_MMAP_MAX       equ 32
 E820_ENTRY_SIZE     equ 24
 
 BOOT_INFO_MAGIC     equ 'LKXB'
-BOOT_INFO_VERSION   equ 1
+BOOT_INFO_VERSION   equ 2           ; 2: adds font_addr
 KERNEL_MAGIC        equ 'LKXK'
 KERNEL_VERSION      equ 1
 
@@ -39,6 +39,7 @@ struc bi
     .fb_bpp         resd 1
     .kernel_start   resd 1
     .kernel_end     resd 1
+    .font_addr      resd 1          ; video BIOS 8x16 font (256 glyphs x 16 bytes), 0 if none
 endstruc
 
 ; Kernel image header: the first bytes of the kernel image on disk.

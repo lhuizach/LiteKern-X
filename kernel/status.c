@@ -1,4 +1,12 @@
 #include "kernel/status.h"
+#include "kernel/console.h"
+
+static const struct {
+    uint32_t fg, bg;
+} colours[] = {
+    [STATUS_READY] = { 0x00c8d0dc, 0x001e3a5f },
+    [STATUS_PANIC] = { 0x00ffffff, 0x00801010 },
+};
 
 static volatile uint8_t *fb;
 static uint32_t fb_pitch, fb_width, fb_height;
@@ -15,15 +23,17 @@ void status_init(const struct boot_info *bi)
 
 void status_show(enum status s)
 {
-    static const uint32_t colour[] = {
-        [STATUS_READY] = 0x001e3a5f,
-        [STATUS_PANIC] = 0x00801010,
-    };
+    if (console_active()) {
+        console_set_colours(colours[s].fg, colours[s].bg);
+        return;
+    }
+    /* No console: fill the screen directly. The framebuffer is identity-mapped
+     * both before and after paging is enabled. */
     if (!fb)
         return;
     for (uint32_t y = 0; y < fb_height; y++) {
         volatile uint32_t *row = (volatile uint32_t *)(fb + y * fb_pitch);
         for (uint32_t x = 0; x < fb_width; x++)
-            row[x] = colour[s];
+            row[x] = colours[s].bg;
     }
 }
