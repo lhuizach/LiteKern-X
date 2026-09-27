@@ -1,5 +1,7 @@
 /* LiteKern X — boot timing (docs/BOOT-BUDGET.md).
- * All times are relative to T0 (stage 1 entry) and printed as
+ *
+ * Phases are recorded while booting and printed together by boot_report(),
+ * so no measurement includes the (slow, in the VMs) serial output. Lines:
  *   [boot] t=<ms since T0> phase=<name> dt=<ms for this phase> */
 #ifndef LKX_TIMING_H
 #define LKX_TIMING_H
@@ -13,7 +15,10 @@ void timing_init(const struct boot_info *bi);
 uint32_t tsc_mhz(void);
 uint32_t tsc_to_ms(uint64_t ticks);
 
-/* Log one phase that ran from TSC value `start` to `end`. */
+/* Record one phase that ran from TSC value `start` to `end`. */
 void boot_phase(const char *name, uint64_t start, uint64_t end);
+
+/* Print the calibration, every recorded phase, and "[boot] ready t=...". */
+void boot_report(uint64_t ready);
 
 #endif

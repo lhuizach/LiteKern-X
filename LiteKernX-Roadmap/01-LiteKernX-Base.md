@@ -22,9 +22,10 @@ Goal: a booting kernel with a working driver layer and basic hardware detection 
 - [x] Add per-phase boot timestamps from the start, so cost is visible immediately — don't leave perf measurement until the end like v1 did (use `rdtsc` from bootloader entry; calibrate against the PIT once so ticks convert to ms)
 
 ## 3. Hardware detection / enumeration (~1.5 hrs)
-- [ ] Read BIOS-provided memory map and basic display mode (this is your zero-driver framebuffer + memory info)
-- [ ] PCI bus enumeration — walk the bus, read vendor ID / device ID / class code for each device found
-- [ ] Log/print what's detected, even if nothing is initialized yet — this proves enumeration works independently of drivers
+- [x] Read BIOS-provided memory map and basic display mode (this is your zero-driver framebuffer + memory info) — `kernel/memmap.c`
+- [x] PCI bus enumeration — walk the bus, read vendor ID / device ID / class code for each device found — `kernel/pci.c`, follows PCI-to-PCI bridges (the EeePC's Ethernet/Wi-Fi sit behind PCIe root ports), results kept in `pci_devices[]` for §4
+- [x] Log/print what's detected, even if nothing is initialized yet — this proves enumeration works independently of drivers (verified in QEMU, incl. a bridge, and VirtualBox)
+- [ ] Real-hardware check: capture the EeePC's device list. It has no serial port, so this needs the on-screen log that arrives with the display driver (§6) — until then, record what `lspci -nn` shows under a Linux live USB for comparison
 
 ## 4. Driver abstraction layer (~2 hrs)
 - [ ] Define the fixed driver interface. Every call takes a `device_t *` so one driver can be bound to a specific enumerated device (and, later, to more than one), and `ioctl` gives non-stream devices like the framebuffer a clean escape hatch instead of abusing `read`/`write`:

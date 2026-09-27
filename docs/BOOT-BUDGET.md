@@ -16,6 +16,7 @@
   [boot] t=<ms since T0> phase=<name> dt=<ms for this phase>
   ```
   In the VM this goes to the terminal and to `build/serial.log`. On the EeePC, which has no serial port, the same lines go to an on-screen log once the framebuffer is up (they're buffered until then).
+- Phases are **recorded while booting and printed together at the end** (`boot_report()`), so no phase includes time spent writing to the serial port. In the VMs, serial output is slow enough to swamp everything else: printing the PCI list inline made `pci` look like 171 ms when the scan itself takes under 1 ms.
 
 ## Allocation
 
@@ -43,3 +44,5 @@ These are first guesses. **Replace them with real measurements as soon as Phase 
 |---|---|---|---|---|
 | 2026-09-27 | kernel entry | QEMU (TCG) — not authoritative | 56 ms | bootloader 6, vbe 3, kernel_early 46 (includes the 10 ms TSC calibration) |
 | 2026-09-27 | kernel entry | VirtualBox 7.2.8, 1024×600 — not authoritative | 41 ms | bootloader 1, vbe 26, kernel_early 13 |
+| 2026-09-27 | §3 hw detection (logging excluded) | QEMU (TCG) — not authoritative | 45 ms | bootloader 14, vbe 5, kernel_early 23, pci 0, first_frame 1 |
+| 2026-09-27 | §3 hw detection (logging excluded) | VirtualBox 7.2.8, 1024×600 — not authoritative | 115 ms | bootloader 3, vbe 73, kernel_early 11, pci 3, first_frame 22 |

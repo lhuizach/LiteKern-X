@@ -1,5 +1,6 @@
 /* LiteKern X — kernel logging.
- * Formats: %s %c %d %u %x %p %%, with optional '0' flag and width (e.g. %08x). */
+ * Formats: %s %c %d %u %x %p %%, with optional '0' flag and width (e.g. %08x),
+ * and 'll' for 64-bit %llu / %llx. */
 #ifndef LKX_PRINTK_H
 #define LKX_PRINTK_H
 

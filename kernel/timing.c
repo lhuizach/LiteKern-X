@@ -5,8 +5,16 @@
 #define PIT_HZ          1193182u
 #define CALIBRATE_MS    10u     /* counts against the kernel_early budget */
 
+#define MAX_PHASES      16
+
 static uint64_t t0;
 static uint64_t tsc_hz;
+
+static struct {
+    const char *name;
+    uint64_t start, end;
+} phases[MAX_PHASES];
+static uint32_t phase_count;
 
 /* Time CALIBRATE_MS of PIT channel 2 (gated through port 0x61, speaker
  * off) with the TSC. The N270's TSC runs at a constant rate, so one
@@ -38,8 +46,6 @@ void timing_init(const struct boot_info *bi)
     tsc_hz = calibrate();
     if (tsc_hz < 1000000)
         panic("TSC calibration gave an implausible %u Hz", (uint32_t)tsc_hz);
-    kprintf("[boot] tsc=%u MHz (calibrated against the PIT over %u ms)\n",
-            tsc_mhz(), CALIBRATE_MS);
 }
 
 uint32_t tsc_mhz(void)
@@ -54,5 +60,20 @@ uint32_t tsc_to_ms(uint64_t ticks)
 
 void boot_phase(const char *name, uint64_t start, uint64_t end)
 {
-    kprintf("[boot] t=%u phase=%s dt=%u\n", tsc_to_ms(end - t0), name, tsc_to_ms(end - start));
+    if (phase_count == MAX_PHASES)
+        panic("boot_phase: more than %u phases", MAX_PHASES);
+    phases[phase_count].name = name;
+    phases[phase_count].start = start;
+    phases[phase_count].end = end;
+    phase_count++;
+}
+
+void boot_report(uint64_t ready)
+{
+    kprintf("[boot] tsc=%u MHz (calibrated against the PIT over %u ms)\n",
+            tsc_mhz(), CALIBRATE_MS);
+    for (uint32_t i = 0; i < phase_count; i++)
+        kprintf("[boot] t=%u phase=%s dt=%u\n", tsc_to_ms(phases[i].end - t0), phases[i].name,
+                tsc_to_ms(phases[i].end - phases[i].start));
+    kprintf("[boot] ready t=%u\n", tsc_to_ms(ready - t0));
 }

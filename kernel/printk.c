@@ -10,9 +10,9 @@ static void put_str(const char *s)
         serial_putc(*s++);
 }
 
-static void put_uint(uint32_t v, unsigned base, int width, char pad)
+static void put_uint(uint64_t v, unsigned base, int width, char pad)
 {
-    char buf[12];
+    char buf[20];
     int n = 0;
     do {
         buf[n++] = "0123456789abcdef"[v % base];
@@ -40,6 +40,11 @@ void vkprintf(const char *fmt, va_list ap)
         }
         while (*fmt >= '0' && *fmt <= '9')
             width = width * 10 + (*fmt++ - '0');
+        int is_64 = 0;
+        if (fmt[0] == 'l' && fmt[1] == 'l') {
+            is_64 = 1;
+            fmt += 2;
+        }
 
         switch (*fmt) {
         case 's': {
@@ -61,11 +66,11 @@ void vkprintf(const char *fmt, va_list ap)
             break;
         }
         case 'u':
-            put_uint(va_arg(ap, uint32_t), 10, width, pad);
+        case 'x': {
+            uint64_t v = is_64 ? va_arg(ap, uint64_t) : va_arg(ap, uint32_t);
+            put_uint(v, *fmt == 'x' ? 16 : 10, width, pad);
             break;
-        case 'x':
-            put_uint(va_arg(ap, uint32_t), 16, width, pad);
-            break;
+        }
         case 'p':
             put_str("0x");
             put_uint((uint32_t)va_arg(ap, void *), 16, 8, '0');

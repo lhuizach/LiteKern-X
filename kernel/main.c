@@ -3,6 +3,8 @@
 #include "kernel/gdt.h"
 #include "kernel/idt.h"
 #include "kernel/io.h"
+#include "kernel/memmap.h"
+#include "kernel/pci.h"
 #include "kernel/printk.h"
 #include "kernel/serial.h"
 #include "kernel/status.h"
@@ -30,14 +32,26 @@ void kmain(uint32_t magic, const struct boot_info *bi)
     __asm__ volatile("ud2");
 #endif
 
-    uint64_t ready = rdtsc();
+    uint64_t early_done = rdtsc();
     boot_phase("bootloader", bi->tsc[TSC_STAGE1], bi->tsc[TSC_KERNEL_LOADED]);
     boot_phase("vbe", bi->tsc[TSC_KERNEL_LOADED], bi->tsc[TSC_VBE_DONE]);
-    boot_phase("kernel_early", bi->tsc[TSC_VBE_DONE], ready);
+    boot_phase("kernel_early", bi->tsc[TSC_VBE_DONE], early_done);
+
+    /* Hardware detection: discover, initialise nothing (Phase 1 §3). */
+    pci_scan();
+    uint64_t pci_done = rdtsc();
+    boot_phase("pci", early_done, pci_done);
 
     status_show(STATUS_READY);
-    kprintf("[boot] ready t=%u\n", tsc_to_ms(ready - bi->tsc[TSC_STAGE1]));
+    uint64_t ready = rdtsc();
+    boot_phase("first_frame", pci_done, ready);
 
-    /* Nothing else exists yet (Phase 1 §3 onwards). */
+    /* Everything is reported after the fact, so no phase above includes the
+     * time spent printing (slow over serial in the VMs). */
+    boot_report(ready);
+    memmap_report(bi);
+    pci_report();
+
+    /* Nothing else exists yet (Phase 1 §4 onwards). */
     halt_forever();
 }
