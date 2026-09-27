@@ -6,6 +6,7 @@
 BUILD  ?= build
 KERNEL ?= c                 # c = the real kernel, stub = tests/boot/kernel-stub.asm
 EXTRA_CFLAGS ?=
+EXTRA_KERNEL_SRCS ?=        # extra C files linked into the kernel (test builds)
 
 QEMU  := bash vm/qemu.sh
 IMAGE := $(BUILD)/litekernx.img
@@ -20,7 +21,7 @@ CFLAGS  := -m32 -march=i686 -mtune=bonnell -std=gnu11 -O2 -g \
            -mgeneral-regs-only -Wall -Wextra -Werror -I. $(EXTRA_CFLAGS)
 LIBGCC  := $(shell $(CC) -m32 -print-libgcc-file-name)
 
-KERNEL_OBJS := $(patsubst %.c,$(BUILD)/%.o,$(wildcard kernel/*.c)) \
+KERNEL_OBJS := $(patsubst %.c,$(BUILD)/%.o,$(wildcard kernel/*.c drivers/*.c) $(EXTRA_KERNEL_SRCS)) \
                $(patsubst %.asm,$(BUILD)/%.asm.o,$(wildcard kernel/*.asm))
 
 .PHONY: all run debug test test-boot test-kernel smoke smoke-gui check-tools clean \
@@ -30,7 +31,7 @@ all: $(IMAGE)
 
 # --- kernel -----------------------------------------------------------------
 
-$(BUILD)/kernel/%.o: kernel/%.c
+$(BUILD)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -MMD -MP -c -o $@ $<
 

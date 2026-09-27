@@ -12,8 +12,13 @@ cd "$(dirname "$0")/../.."
 
 failures=0
 
+selftest_src=tests/kernel/selftest_drivers.c
 make -s build/litekernx.img >/dev/null || exit 1
 make -s BUILD=build/test-fault EXTRA_CFLAGS=-DLKX_SELFTEST_FAULT build/test-fault/litekernx.img >/dev/null || exit 1
+make -s BUILD=build/test-drivers EXTRA_CFLAGS=-DLKX_SELFTEST_DRIVERS EXTRA_KERNEL_SRCS=$selftest_src \
+    build/test-drivers/litekernx.img >/dev/null || exit 1
+make -s BUILD=build/test-bad-driver "EXTRA_CFLAGS=-DLKX_SELFTEST_DRIVERS -DLKX_SELFTEST_BAD_DRIVER" \
+    EXTRA_KERNEL_SRCS=$selftest_src build/test-bad-driver/litekernx.img >/dev/null || exit 1
 
 # boot_until IMAGE REGEX SECONDS [EXTRA QEMU ARGS] -> $out holds the serial output
 boot_until() {
@@ -55,9 +60,10 @@ check() {
     sed '/^$/d; s/^/      /' <<<"$out"
 }
 
-# Last line of a full boot / of a panic. Anchored to the end of the line so a
-# half-written line doesn't count.
-done_re='^pci: [0-9]+ devices on [0-9]+ buses.?$|^PANIC: .*\).?$'
+# Last line of a full boot / of the driver self-test / of a panic. Anchored to
+# the end of the line so a half-written line doesn't count.
+done_re='^drivers: .* without a driver.?$|^PANIC: .*\).?$'
+selftest_done_re='^selftest: drivers [0-9]+/[0-9]+ passed.?$|^PANIC: .*\).?$'
 
 boot_until build/litekernx.img "$done_re" 20
 check "boots to ready with per-phase timing" \
@@ -67,6 +73,7 @@ check "boots to ready with per-phase timing" \
     '^\[boot\] t=[0-9]+ phase=vbe dt=[0-9]+$' \
     '^\[boot\] t=[0-9]+ phase=kernel_early dt=[0-9]+$' \
     '^\[boot\] t=[0-9]+ phase=pci dt=[0-9]+$' \
+    '^\[boot\] t=[0-9]+ phase=drivers dt=[0-9]+$' \
     '^\[boot\] t=[0-9]+ phase=first_frame dt=[0-9]+$' \
     '^\[boot\] ready t=[0-9]+$' \
     '!PANIC|exception'
@@ -83,6 +90,24 @@ check "enumerates QEMU's PCI devices" \
     '^pci 00:01\.1 8086:7010 class 01\.01\.80 rev [0-9a-f]{2} IDE controller$' \
     '^pci 00:02\.0 1234:1111 class 03\.00\.00 rev [0-9a-f]{2} VGA controller$' \
     '^pci: [0-9]+ devices on 1 buses$'
+
+check "binds the COM1 reference driver" \
+    '^dev com1 driver=uart16550 bound$' \
+    '^drivers: 1 registered, 1 devices bound, 0 failed; [0-9]+ PCI devices without a driver$'
+
+boot_until build/test-drivers/litekernx.img "$selftest_done_re" 20
+check "driver layer self-test (PCI matching, failures, -ENOSYS, shutdown)" \
+    '^dev pci 00:01\.1 driver=selftest-ide bound$' \
+    '^dev pci 00:02\.0 driver=selftest-fail FAILED \(EIO\)$' \
+    '^dev com3 driver=uart16550 FAILED \(ENODEV\)$' \
+    '^selftest: hello through the com1 driver$' \
+    '^selftest: drivers ([0-9]+)/\1 passed$' \
+    '!selftest: FAIL|PANIC'
+
+boot_until build/test-bad-driver/litekernx.img "$selftest_done_re" 20
+check "refuses a driver with a missing operation" \
+    "^PANIC: driver selftest-bad: missing operation 'read' " \
+    '!selftest: drivers'
 
 boot_until build/litekernx.img "$done_re" 20 \
     -device pci-bridge,chassis_nr=1,id=br1 -device virtio-rng-pci,bus=br1,addr=3

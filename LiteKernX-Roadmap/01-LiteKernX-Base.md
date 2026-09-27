@@ -28,7 +28,7 @@ Goal: a booting kernel with a working driver layer and basic hardware detection 
 - [ ] Real-hardware check: capture the EeePC's device list. It has no serial port, so this needs the on-screen log that arrives with the display driver (§6) — until then, record what `lspci -nn` shows under a Linux live USB for comparison
 
 ## 4. Driver abstraction layer (~2 hrs)
-- [ ] Define the fixed driver interface. Every call takes a `device_t *` so one driver can be bound to a specific enumerated device (and, later, to more than one), and `ioctl` gives non-stream devices like the framebuffer a clean escape hatch instead of abusing `read`/`write`:
+- [x] Define the fixed driver interface — implemented in `kernel/driver.h` (the source of truth; it adds a `pci_ids` match list to `driver_t` and keeps the PCI info behind `dev->pci`). Every call takes a `device_t *` so one driver can be bound to a specific enumerated device (and, later, to more than one), and `ioctl` gives non-stream devices like the framebuffer a clean escape hatch instead of abusing `read`/`write`:
   ```c
   typedef struct device device_t;   /* bound device: PCI/legacy info + driver-private state */
 
@@ -48,10 +48,11 @@ Goal: a booting kernel with a working driver layer and basic hardware detection 
       void    *priv;                  /* driver-owned state */
   };
   ```
-- [ ] Unsupported operations return a defined error (e.g. `-ENOSYS`), never a silent no-op
-- [ ] Driver registry — kernel only ever calls through this interface
-- [ ] Registration fails loudly if `init()` doesn't succeed — no silent half-working drivers
-- [ ] Vendor/device ID → driver matching table (even a tiny hardcoded one) so enumeration results (step 3) can select a driver; legacy devices (i8042, VBE framebuffer) are registered explicitly
+- [x] Unsupported operations return a defined error (e.g. `-ENOSYS`), never a silent no-op — `driver_nosys_*` helpers; a NULL operation panics at `driver_add()`
+- [x] Driver registry — kernel only ever calls through this interface (`dev_read/write/ioctl/shutdown`)
+- [x] Registration fails loudly if `init()` doesn't succeed — no silent half-working drivers (device marked FAILED with its error, reported at boot, every later call returns `-ENODEV`)
+- [x] Vendor/device ID → driver matching table (even a tiny hardcoded one) so enumeration results (step 3) can select a driver; legacy devices (i8042, VBE framebuffer) are registered explicitly — `driver_probe_pci()`, `device_add_legacy()`, built-ins listed in `drivers/builtin.c`
+- [x] One reference driver, actually exercised: `drivers/uart.c` (16550, COM1). Checked by an 18-point self-test build (`tests/kernel/selftest_drivers.c`) plus a missing-operation panic test. On the EeePC, which has no UART, it should report `com1 FAILED (ENODEV)`
 
 ## 5. Memory protection + system calls (~3.5 hrs)
 - [ ] Set up paging (or segmentation, but paging is the standard modern approach) on the N270 — it supports it

@@ -1,5 +1,7 @@
 /* LiteKern X — kernel entry point (called from kernel/entry.asm). */
 #include "boot/bootinfo.h"
+#include "drivers/builtin.h"
+#include "kernel/driver.h"
 #include "kernel/gdt.h"
 #include "kernel/idt.h"
 #include "kernel/io.h"
@@ -11,6 +13,12 @@
 #include "kernel/timing.h"
 
 void kmain(uint32_t magic, const struct boot_info *bi) __attribute__((noreturn));
+
+#ifdef LKX_SELFTEST_DRIVERS
+/* tests/kernel/selftest_drivers.c, linked into test builds only. */
+void selftest_drivers_register(void);
+void selftest_drivers_run(void);
+#endif
 
 void kmain(uint32_t magic, const struct boot_info *bi)
 {
@@ -42,16 +50,31 @@ void kmain(uint32_t magic, const struct boot_info *bi)
     uint64_t pci_done = rdtsc();
     boot_phase("pci", early_done, pci_done);
 
+    /* Drivers: register, bind legacy devices, match PCI devices (Phase 1 §4). */
+    drivers_register();
+#ifdef LKX_SELFTEST_DRIVERS
+    selftest_drivers_register();
+#endif
+    drivers_add_legacy_devices();
+    driver_probe_pci();
+    uint64_t drivers_done = rdtsc();
+    boot_phase("drivers", pci_done, drivers_done);
+
     status_show(STATUS_READY);
     uint64_t ready = rdtsc();
-    boot_phase("first_frame", pci_done, ready);
+    boot_phase("first_frame", drivers_done, ready);
 
     /* Everything is reported after the fact, so no phase above includes the
      * time spent printing (slow over serial in the VMs). */
     boot_report(ready);
     memmap_report(bi);
     pci_report();
+    device_report();
 
-    /* Nothing else exists yet (Phase 1 §4 onwards). */
+#ifdef LKX_SELFTEST_DRIVERS
+    selftest_drivers_run();
+#endif
+
+    /* Nothing else exists yet (Phase 1 §5 onwards). */
     halt_forever();
 }
