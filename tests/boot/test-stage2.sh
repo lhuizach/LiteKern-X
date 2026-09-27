@@ -1,24 +1,26 @@
 #!/usr/bin/env bash
-# LiteKern X — stage 2 tests. Boots the real image (stage 1 + stage 2 + the
-# kernel stub) plus deliberately broken variants in the headless VM.
+# LiteKern X — stage 2 tests. Boots stage 1 + stage 2 + the kernel stub (which
+# checks every promise of the stage 2 -> kernel handoff) plus deliberately
+# broken variants in the headless VM.
 #
 # Usage: bash tests/boot/test-stage2.sh   (or: make test-boot)
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 
+stub_build=build/test-stub
 out_dir=build/test-boot
 mkdir -p "$out_dir"
 failures=0
 
 # --- build ---------------------------------------------------------------------
-make -s build/litekernx.img >/dev/null || exit 1
+make -s BUILD=$stub_build KERNEL=stub $stub_build/litekernx.img >/dev/null || exit 1
 gcc -m32 -fsyntax-only -x c boot/bootinfo.h || { echo "FAIL  boot/bootinfo.h layout asserts"; exit 1; }
 echo "PASS  boot/bootinfo.h matches the assembly layout"
 
-img=build/litekernx.img
-s2=$(( $(stat -c %s build/stage2.bin) / 512 ))
+img=$stub_build/litekernx.img
+s2=$(( $(stat -c %s $stub_build/stage2.bin) / 512 ))
 kernel_off=$(( (1 + s2) * 512 ))
-echo "info  stage 2: $s2 sectors; kernel at LBA $((1 + s2)), $(( $(stat -c %s build/kernel.bin) / 512 )) sectors"
+echo "info  stage 2: $s2 sectors; kernel stub at LBA $((1 + s2)), $(( $(stat -c %s $stub_build/kernel.bin) / 512 )) sectors"
 
 # poke FILE OFFSET HEXBYTES -- overwrite bytes in place
 poke() { printf "$(sed 's/\(..\)/\\x\1/g' <<<"$3")" | dd of="$1" bs=1 seek="$2" conv=notrunc status=none; }

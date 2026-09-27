@@ -2,7 +2,9 @@
 
 A from-scratch 32-bit x86 OS for the ASUS EeePC 1000HE (Intel Atom N270). It's a clean-slate rewrite of LiteKern v1 that keeps the KERN86 app model (`.lkx`, `kerns.json`, `kern86.h`).
 
-**Status:** Phase 1, section 2 (minimal boot path). The bootloader (stage 1 and stage 2) works in the VM. The kernel is currently a test stub that checks the handoff and paints the screen.
+**Status:** Phase 1, section 2 (minimal boot path) is done in the VM. The bootloader is stage 1 + stage 2, and the C kernel sets up its GDT/IDT, calibrates the TSC, logs per-phase boot times and reaches "ready". None of this has been verified on the real EeePC yet.
+
+On real hardware there's no serial port, so the screen colour is the only status signal for now: **navy means ready, dark red means panic**.
 
 - Plan: [`LiteKernX-Roadmap/`](LiteKernX-Roadmap/). The phase files there are the source of truth.
 - [Non-Goals](docs/NON-GOALS.md)
@@ -12,13 +14,15 @@ A from-scratch 32-bit x86 OS for the ASUS EeePC 1000HE (Intel Atom N270). It's a
 ```
 LiteKernX-Roadmap/   the plan, phase by phase
 boot/                custom bootloader (stage 1 MBR, stage 2) + boot_info layout — see docs/BOOT-PROTOCOL.md
+kernel/              C kernel: entry, GDT/IDT, exceptions, TSC timing, serial log
 docs/                non-goals, boot budget, boot protocol
 tests/boot/          bootloader tests + the stage 2 / kernel stubs they boot
+tests/kernel/        kernel tests (boot log, exception self-test)
 vm/qemu.sh           QEMU dev VM configured to approximate the EeePC 1000HE
 vm/smoke/            boot-sector smoke test for the VM itself
 tools/setup-wsl.sh   installs the toolchain + QEMU in WSL Ubuntu
 ```
-Other source directories (`kernel/`, `drivers/`, …) get created when the phase that needs them starts, not before.
+Other source directories (`drivers/`, …) get created when the phase that needs them starts, not before.
 
 ## Setup (Windows + WSL Ubuntu)
 Run these once, from PowerShell in this folder:
@@ -31,7 +35,7 @@ wsl make check-tools
 | Command | What it does |
 |---|---|
 | `wsl make` | Builds `build/litekernx.img` (stage 1 + stage 2 + kernel) |
-| `wsl make test` | Runs all tests: the VM smoke test, plus the stage 1 and stage 2 tests (good boot and every failure path) |
+| `wsl make test` | Runs all tests: the VM smoke test, the bootloader tests (good boot and every failure path) and the kernel tests |
 | `wsl make smoke` | Boots the smoke image headless and checks serial output + exit code |
 | `wsl make smoke-gui` | Same image in a QEMU window (shown through WSLg) |
 | `wsl make run` | Builds and boots `build/litekernx.img` in a window |

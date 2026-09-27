@@ -41,4 +41,4 @@ These are first guesses. **Replace them with real measurements as soon as Phase 
 ## Measurements log
 | Date | Build | Hardware | Total | Notes |
 |---|---|---|---|---|
-| — | — | — | — | Nothing boots yet |
+| 2026-09-27 | kernel entry | QEMU (TCG) — not authoritative | 56 ms | bootloader 6, vbe 3, kernel_early 46 (includes the 10 ms TSC calibration) |

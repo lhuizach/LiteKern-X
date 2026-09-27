@@ -18,8 +18,8 @@ Goal: a booting kernel with a working driver layer and basic hardware detection 
   - [x] Stage 1: 512-byte MBR boot sector, loads stage 2 with BIOS `int 13h` extended reads (LBA) — `boot/stage1.asm`, contract in `docs/BOOT-PROTOCOL.md`, tested by `make test-boot` (VM only; real-EeePC USB boot still to verify)
   - [x] Stage 2: reads the E820 memory map, sets the VBE mode, enables A20, loads the kernel in as few large reads as possible, switches to 32-bit protected mode, and jumps to the kernel with a boot-info struct (T0 TSC, memory map, framebuffer info) — `boot/stage2.asm`, tested by `make test-boot` against a kernel stub (VM only)
   - [ ] Real-hardware check: boot `build/litekernx.img` from USB on the EeePC — expect a navy screen with a light-blue band (the kernel stub), and note which VBE mode it picked
-- [ ] Kernel entry + minimal init (stack, GDT/IDT, memory map read from BIOS)
-- [ ] Add per-phase boot timestamps from the start, so cost is visible immediately — don't leave perf measurement until the end like v1 did (use `rdtsc` from bootloader entry; calibrate against the PIT once so ticks convert to ms)
+- [x] Kernel entry + minimal init (stack, GDT/IDT, memory map read from BIOS) — `kernel/`; exceptions are reported and halt; memory map arrives via `boot_info` (printing it is §3)
+- [x] Add per-phase boot timestamps from the start, so cost is visible immediately — don't leave perf measurement until the end like v1 did (use `rdtsc` from bootloader entry; calibrate against the PIT once so ticks convert to ms)
 
 ## 3. Hardware detection / enumeration (~1.5 hrs)
 - [ ] Read BIOS-provided memory map and basic display mode (this is your zero-driver framebuffer + memory info)
