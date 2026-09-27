@@ -28,8 +28,10 @@ make -s BUILD=build/test-kernel-wp EXTRA_CFLAGS=-DLKX_SELFTEST_KERNEL_WP \
     build/test-kernel-wp/litekernx.img >/dev/null || exit 1
 
 # boot_until IMAGE REGEX SECONDS [EXTRA QEMU ARGS] -> $out holds the serial output
-# With SCREEN="check ..." set, also takes a screenshot once REGEX matched and
-# appends tests/lib/screendump.py's "screen: ..." lines for those checks to $out.
+# Once REGEX matches:
+#   KEYS="a shift-a ret"  types those keys, then waits for KEYS_DONE (a regex)
+#   SCREEN="check ..."    takes a screenshot and appends tests/lib/qemu_monitor.py's
+#                         "screen: ..." lines for those checks to $out
 boot_until() {
     local img=$1 re=$2 secs=$3 log pid i sock=/tmp/lkx-test-mon-$$.sock
     local shot=build/test-screens/$(basename "$(dirname "$img")").png
@@ -44,10 +46,18 @@ boot_until() {
         sleep 0.1
     done
     sleep 0.3       # REGEX matched the last expected line; let the rest of the output land
+    if [ -n "${KEYS:-}" ]; then
+        python3 tests/lib/qemu_monitor.py keys "$sock" $KEYS
+        for ((i = 0; i < 50; i++)); do
+            grep -Eq "$KEYS_DONE" "$log" && break
+            sleep 0.1
+        done
+        sleep 0.2
+    fi
     if [ -n "${SCREEN:-}" ]; then
         mkdir -p build/test-screens
-        python3 tests/lib/screendump.py shot "$sock" "$shot" &&
-            screen_out=$(python3 tests/lib/screendump.py check "$shot" $SCREEN)
+        python3 tests/lib/qemu_monitor.py shot "$sock" "$shot" &&
+            screen_out=$(python3 tests/lib/qemu_monitor.py check "$shot" $SCREEN)
     fi
     kill "$pid" 2>/dev/null
     wait "$pid" 2>/dev/null
@@ -81,7 +91,7 @@ check() {
 
 # Last line of a full boot / of the driver self-test / of a panic. Anchored to
 # the end of the line so a half-written line doesn't count.
-done_re='^drivers: .* without a driver.?$|^PANIC: .*\).?$'
+done_re='^kbd: ready; key presses are logged below.?$|^PANIC: .*\).?$'
 selftest_done_re='^selftest: drivers [0-9]+/[0-9]+ passed.?$|^PANIC: .*\).?$'
 user_done_re='^selftest: user [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$'
 panic_re='^PANIC: .*[0-9a-f)].?$'
@@ -119,15 +129,34 @@ check "enumerates QEMU's PCI devices" \
     '^pci 00:02\.0 1234:1111 class 03\.00\.00 rev [0-9a-f]{2} VGA controller$' \
     '^pci: [0-9]+ devices on 1 buses$'
 
-check "binds the COM1 and display drivers" \
+check "binds the COM1, display and keyboard drivers" \
     '^dev com1 driver=uart16550 bound$' \
     '^dev fb0 driver=vbefb bound$' \
-    '^drivers: 2 registered, 2 devices bound, 0 failed; [0-9]+ PCI devices without a driver$'
+    '^dev kbd0 driver=ps2kbd bound$' \
+    '^drivers: 3 registered, 3 devices bound, 0 failed; [0-9]+ PCI devices without a driver$'
 
 check "shows the boot log on screen (navy = ready)" \
     '^console: 128x48 characters, video BIOS font at 0x[0-9a-f]{5}$' \
     "^screen: corner $NAVY$" \
     "^screen: has $TEXT in 0,16,100,32: yes$"
+
+KEYS="a shift-a caps_lock b caps_lock 1 shift-1 ret up left ctrl-c esc backspace" \
+KEYS_DONE='^kbd: key 0x00e ascii 0x08' \
+    boot_until build/litekernx.img "$done_re" 20
+check "keyboard: IRQ-driven key events decoded (shift, caps lock, ctrl, E0 keys)" \
+    "^kbd: key 0x01e 'a'$" \
+    "^kbd: key 0x02a mods 0x1$" \
+    "^kbd: key 0x01e 'A' mods 0x1$" \
+    "^kbd: key 0x030 'B' mods 0x8$" \
+    "^kbd: key 0x002 '1'$" \
+    "^kbd: key 0x002 '!' mods 0x1$" \
+    '^kbd: key 0x01c ascii 0x0a$' \
+    '^kbd: key 0x148$' \
+    '^kbd: key 0x14b$' \
+    '^kbd: key 0x02e ascii 0x03 mods 0x2$' \
+    '^kbd: key 0x001 ascii 0x1b$' \
+    '^kbd: key 0x00e ascii 0x08$' \
+    '!PANIC'
 
 boot_until build/test-drivers/litekernx.img "$selftest_done_re" 20
 check "driver layer + display driver self-test" \

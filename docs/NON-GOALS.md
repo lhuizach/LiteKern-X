@@ -16,6 +16,7 @@ These are things LiteKern X is deliberately **not** building for v1.0. If you wa
 - USB stack (UHCI/EHCI): the internal keyboard and touchpad are PS/2, and the BIOS handles booting from USB
 - Webcam, SD card reader, Bluetooth
 - Native GMA 950 modesetting or 2D acceleration. Use only the VBE linear framebuffer.
+- Keyboard layouts other than US, and keyboard LEDs
 - Touchpad extended protocols (Elantech/Synaptics), gestures and multi-touch. Basic 3-byte PS/2 packets only.
 - SMP / Hyper-Threading. Only one logical CPU is used.
 - ACPI power management: suspend, hibernate, battery status, backlight and Fn keys

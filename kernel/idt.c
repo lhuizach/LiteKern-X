@@ -1,6 +1,7 @@
 #include "kernel/idt.h"
 #include "kernel/gdt.h"
 #include "kernel/io.h"
+#include "kernel/irq.h"
 #include "kernel/printk.h"
 #include "kernel/syscall.h"
 #include "kernel/user.h"
@@ -26,7 +27,7 @@ struct idt_ptr {
 #define PF_WRITE    0x2
 #define PF_USER     0x4
 
-extern const uint32_t isr_stubs[32];
+extern const uint32_t isr_stubs[48];    /* exceptions 0-31, IRQs 32-47 */
 extern const char isr_syscall[];
 
 static struct idt_entry idt[256];
@@ -54,7 +55,7 @@ static void set_gate(unsigned v, uint32_t addr, uint8_t type)
 
 void idt_init(void)
 {
-    for (unsigned v = 0; v < 32; v++)
+    for (unsigned v = 0; v < 48; v++)
         set_gate(v, isr_stubs[v], GATE_INT32_RING0);
     set_gate(SYSCALL_VECTOR, (uint32_t)isr_syscall, GATE_INT32_RING3);
     struct idt_ptr ptr = { sizeof(idt) - 1, (uint32_t)idt };
@@ -99,6 +100,12 @@ static void kernel_fault(const struct int_frame *f)
 void interrupt_handler(struct int_frame *f)
 {
     int from_user = (f->cs & 3) == 3;
+
+    /* A hardware IRQ is not a fault, whichever ring it interrupted. */
+    if (f->vector >= IRQ_BASE_VECTOR && f->vector < IRQ_BASE_VECTOR + IRQ_COUNT) {
+        irq_dispatch(f->vector - IRQ_BASE_VECTOR);
+        return;
+    }
 
     if (f->vector == SYSCALL_VECTOR) {
         if (!from_user)

@@ -9,6 +9,8 @@
 #include "kernel/driver.h"
 #include "kernel/errno.h"
 #include "kernel/fb.h"
+#include "kernel/input.h"
+#include "kernel/irq.h"
 #include "kernel/printk.h"
 
 static device_t *com3;
@@ -27,6 +29,12 @@ static void ide_shutdown(device_t *dev)
 {
     (void)dev;
     ide_shutdowns++;
+}
+
+/* Never runs: only used to try registering IRQ handlers that must be refused. */
+static void ide_shutdown_irq(void *ctx)
+{
+    (void)ctx;
 }
 
 static const struct pci_id ide_ids[] = {
@@ -170,6 +178,20 @@ void selftest_drivers_run(void)
           "unknown ioctl -> -ENOSYS, NULL argument -> -EINVAL");
     check(dev_write(fb, "x", 1) == -ENOSYS, "the framebuffer is not a byte stream (write -> -ENOSYS)");
 #undef PIXEL
+
+    /* Keyboard driver (drivers/kbd.c) and IRQ lines. Key decoding itself is
+     * tested by typing into the VM (tests/kernel/test-kernel.sh). */
+    device_t *kbd = device_find("kbd0");
+    struct key_event ev[2];
+    uint32_t dropped = 1;
+    check(kbd && kbd->state == DEVICE_BOUND, "kbd0 is bound to the ps2kbd driver");
+    check(dev_read(kbd, ev, sizeof(ev[0]) + 1) == -EINVAL, "reading part of a key event -> -EINVAL");
+    check(dev_read(kbd, ev, sizeof(ev)) == 0, "reading with no keys pressed returns 0 (non-blocking)");
+    check(dev_ioctl(kbd, KBD_GET_DROPPED, &dropped) == 0 && dropped == 0, "no key events dropped");
+    check(dev_write(kbd, "x", 1) == -ENOSYS, "keyboard write -> -ENOSYS");
+    check(irq_register(1, ide_shutdown_irq, 0) == -EBUSY, "a second handler on IRQ 1 -> -EBUSY");
+    check(irq_register(2, ide_shutdown_irq, 0) == -EINVAL && irq_register(16, ide_shutdown_irq, 0) == -EINVAL,
+          "IRQ 2 (cascade) and IRQ 16 can't be registered");
 
     kprintf("selftest: drivers %d/%d passed\n", passed, passed + failed);
     if (failed)

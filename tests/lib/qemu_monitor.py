@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""LiteKern X - QEMU screen capture and checks for the tests.
+"""LiteKern X - driving a running QEMU through its monitor socket, for the tests.
 
-  screendump.py shot SOCKET OUT.png        ask QEMU's monitor for a screendump
-  screendump.py check FILE.png CHECK...    print one "screen: ..." line per check
+  qemu_monitor.py shot SOCKET OUT.png        save a screendump as PNG
+  qemu_monitor.py check FILE.png CHECK...    print one "screen: ..." line per check
+  qemu_monitor.py keys SOCKET KEY...         type keys (QEMU sendkey names:
+                                             a, shift-a, ret, up, ctrl-c, ...)
 
 Checks (colours are RRGGBB, as the kernel writes 0x00RRGGBB):
   corner=RRGGBB                 bottom-right pixel has this colour
@@ -29,6 +31,16 @@ def shot(sock_path, out):
         f.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
                 + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
     os.remove(ppm)
+
+
+def keys(sock_path, names):
+    s = socket.socket(socket.AF_UNIX)
+    s.connect(sock_path)
+    for name in names:
+        s.sendall(b"sendkey " + name.encode() + b"\n")
+        time.sleep(0.15)            # let the guest take each key before the next
+    time.sleep(0.2)
+    s.close()
 
 
 def read_ppm(path):
@@ -70,5 +82,7 @@ def check(path, checks):
 if __name__ == "__main__":
     if sys.argv[1] == "shot":
         shot(sys.argv[2], sys.argv[3])
+    elif sys.argv[1] == "keys":
+        keys(sys.argv[2], sys.argv[3:])
     else:
         check(sys.argv[2], sys.argv[3:])

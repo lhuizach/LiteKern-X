@@ -68,7 +68,8 @@ Port from v1 deliberately, not wholesale. Suggested order:
 1. [x] Display/framebuffer driver (through the new interface — VBE linear framebuffer, exposed via `ioctl`) — `drivers/vbefb.c`, device `fb0`; `FB_GET_INFO` / `FB_FILL_RECT` / `FB_BLIT` (clipped), interface in `kernel/fb.h`; 9 display checks in the driver self-test
    - [x] On-screen boot log (`kernel/console.c`), drawn only through `fb0`, using the video BIOS 8×16 font stage 2 locates (`boot_info` v2 `font_addr`). Replays everything logged since boot; background shows the status (navy ready / red panic). A debug console, not GUI work — it's what makes the EeePC (no serial port) debuggable
    - [ ] Real-hardware check: the EeePC shows the boot log at 1024×600 — photograph it; it answers the §2 VBE-mode and §3 device-list checks too
-2. [ ] i8042 controller + keyboard driver
+2. [x] i8042 controller + keyboard driver — `drivers/i8042.c` (shared with the touchpad: bounded waits, no slow resets), `drivers/kbd.c` (device `kbd0`, IRQ 1, scancode set 1 → `struct key_event` in `kernel/input.h`, US layout, non-blocking `read`). Brought in hardware IRQs: `kernel/irq.c` (8259 PICs remapped to 32–47, lines masked until a driver registers, spurious IRQ 7/15 handled); after boot the kernel idles with interrupts on and logs key presses. Tested by typing into QEMU (`sendkey`) and VirtualBox (`keyboardputstring`)
+   - [ ] Real-hardware check: type on the EeePC and see `kbd: key ...` lines appear
 3. [ ] Touchpad/mouse driver (PS/2 aux port on the same i8042 — basic 3-byte PS/2 packets are enough; Elantech/Synaptics extended modes are a Non-Goal). Needed by Phase 2's cursor
 4. [ ] Disk/storage driver, if needed at this stage
 

@@ -5,7 +5,9 @@
 #include "kernel/driver.h"
 #include "kernel/gdt.h"
 #include "kernel/idt.h"
+#include "kernel/input.h"
 #include "kernel/io.h"
+#include "kernel/irq.h"
 #include "kernel/memmap.h"
 #include "kernel/pci.h"
 #include "kernel/pmm.h"
@@ -48,6 +50,41 @@ static const struct boot_info *keep_boot_info(uint32_t magic, const struct boot_
     return &boot_info;
 }
 
+/* After boot: interrupts on, sleep until an IRQ, and log key presses so the
+ * keyboard can be checked on real hardware. Nothing else runs yet (Phase 2
+ * brings the GUI and apps). */
+static void __attribute__((noreturn)) idle(void)
+{
+    device_t *kbd = device_find("kbd0");
+    if (kbd && kbd->state == DEVICE_BOUND)
+        kprintf("kbd: ready; key presses are logged below\n");
+
+    for (;;) {
+        struct key_event ev[8];
+        /* Check for events with interrupts off, so one arriving between the
+         * check and the hlt can't be missed: `sti; hlt` is atomic. */
+        __asm__ volatile("cli");
+        int n = dev_read(kbd, ev, sizeof(ev));
+        if (n <= 0) {
+            __asm__ volatile("sti; hlt");
+            continue;
+        }
+        __asm__ volatile("sti");
+        for (int i = 0; i < n / (int)sizeof(ev[0]); i++) {
+            if (!ev[i].pressed)
+                continue;
+            kprintf("kbd: key 0x%03x", ev[i].key);
+            if (ev[i].ascii >= 0x20 && ev[i].ascii < 0x7f)
+                kprintf(" '%c'", ev[i].ascii);
+            else if (ev[i].ascii)
+                kprintf(" ascii 0x%02x", ev[i].ascii);
+            if (ev[i].mods)
+                kprintf(" mods 0x%x", ev[i].mods);
+            kprintf("\n");
+        }
+    }
+}
+
 void kmain(uint32_t magic, const struct boot_info *handoff)
 {
     serial_init();
@@ -57,6 +94,7 @@ void kmain(uint32_t magic, const struct boot_info *handoff)
     status_init(bi);
     gdt_init();
     idt_init();
+    irq_init();             /* PICs remapped, every line masked; interrupts stay off */
     timing_init(bi);
 
 #ifdef LKX_SELFTEST_FAULT
@@ -121,6 +159,5 @@ void kmain(uint32_t magic, const struct boot_info *handoff)
     *(volatile uint8_t *)(uintptr_t)kmain = 0xcc;
 #endif
 
-    /* Nothing else exists yet (Phase 1 §6 onwards). */
-    halt_forever();
+    idle();
 }

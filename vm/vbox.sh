@@ -20,6 +20,8 @@ VM="LiteKern X"
 DISK_UUID=4c4b5800-0000-4000-8000-000000000001
 IMAGE=${IMAGE:-build/litekernx.img}                 # e.g. IMAGE=build/test-user/litekernx.img
 WAIT_FOR=${WAIT_FOR:-'^\[boot\] ready'}             # `test` passes once a log line matches
+TYPE=${TYPE:-}                                      # `test`: text to type once WAIT_FOR matched,
+TYPED=${TYPED:-}                                    #   then wait for this regex too
 DIR=build/vbox
 VDI=$DIR/litekernx.vdi
 SERIAL_LOG=$DIR/serial.log
@@ -34,7 +36,8 @@ usage: vm/vbox.sh COMMAND
   test       update, boot headless, wait for "[boot] ready" (or a panic),
              save a screenshot to build/vbox/screen.png, power off.
              IMAGE=... boots another image; WAIT_FOR=regex changes the line
-             waited for (e.g. a self-test's summary)
+             waited for (e.g. a self-test's summary); TYPE="text" types it
+             into the VM afterwards and TYPED=regex waits for the result
   stop       power the VM off
   status     show the VM's state
   destroy    unregister the VM and delete its files
@@ -111,6 +114,15 @@ test_boot() {
         if grep -q 'PANIC' "$SERIAL_LOG" 2>/dev/null; then result=panic; break; fi
         sleep 0.1
     done
+    if [ "$result" = ready ] && [ -n "$TYPE" ]; then
+        sleep 0.5
+        vbm controlvm "$VM" keyboardputstring "$TYPE"
+        result=timeout
+        for ((i = 0; i < 100; i++)); do
+            if tr -d '\r' <"$SERIAL_LOG" | grep -Eq "$TYPED"; then result=ready; break; fi
+            sleep 0.1
+        done
+    fi
     sleep 1     # let the status colour reach the screen
     vbm controlvm "$VM" screenshotpng "$(win "$DIR/screen.png")" || true
     vbm controlvm "$VM" poweroff >/dev/null 2>&1 || true

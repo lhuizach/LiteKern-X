@@ -1,6 +1,6 @@
-/* LiteKern X — interrupt descriptor table: CPU exceptions (0-31) and the
- * system call gate (0x80, callable from ring 3). IRQs arrive with the first
- * interrupt-driven driver. */
+/* LiteKern X — interrupt descriptor table: CPU exceptions (0-31), hardware
+ * IRQs (32-47, see kernel/irq.h) and the system call gate (0x80, callable
+ * from ring 3). */
 #ifndef LKX_IDT_H
 #define LKX_IDT_H
 
