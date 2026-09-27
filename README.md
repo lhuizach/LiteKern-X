@@ -2,12 +2,12 @@
 
 A from-scratch 32-bit x86 OS for the ASUS EeePC 1000HE (Intel Atom N270). It's a clean-slate rewrite of LiteKern v1 that keeps the KERN86 app model (`.lkx`, `kerns.json`, `kern86.h`).
 
-**Status:** Phase 1, sections 1–5 plus the display and keyboard drivers (§6.1–6.2) are done in the VMs. The bootloader is stage 1 + stage 2. The C kernel:
+**Status:** Phase 1, sections 1–5 plus the display, keyboard and touchpad drivers (§6.1–6.3) are done in the VMs. The bootloader is stage 1 + stage 2. The C kernel:
 - sets up its GDT/IDT/TSS and calibrates the TSC
 - turns on paging: null pointers fault, kernel code is read-only, user space is 2–3 GiB
 - reports the memory map, display mode and every PCI device
-- binds drivers through a fixed driver interface: the COM1 UART, the VBE framebuffer display, and the PS/2 keyboard (interrupt-driven)
-- after boot, idles with interrupts on and logs every key press on screen
+- binds drivers through a fixed driver interface: the COM1 UART, the VBE framebuffer display, and the PS/2 keyboard and touchpad (both interrupt-driven)
+- after boot, idles with interrupts on and logs key presses, clicks and pointer movement on screen
 - shows its log on screen (so the EeePC, which has no serial port, can be debugged)
 - can run a program in ring 3 with `int 0x80` system calls; a fault in the program kills only the program
 - logs per-phase boot times and reaches "ready"
@@ -28,7 +28,7 @@ kernel/              C kernel: entry, GDT/IDT/TSS, exceptions, TSC timing, memor
                      frame allocator + paging, PCI scan, driver layer (driver.h),
                      ring 3 + syscalls (user.c, syscall.h), IRQs (irq.c), on-screen
                      console, log
-drivers/             drivers behind the driver_t interface (uart.c, vbefb.c, kbd.c; i8042.c
+drivers/             drivers behind the driver_t interface (uart.c, vbefb.c, kbd.c, mouse.c; i8042.c
                      is the shared PS/2 controller code) + builtin.c list
 docs/                non-goals, boot budget, boot protocol
 tests/boot/          bootloader tests + the stage 2 / kernel stubs they boot

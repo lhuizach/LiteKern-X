@@ -91,7 +91,7 @@ check() {
 
 # Last line of a full boot / of the driver self-test / of a panic. Anchored to
 # the end of the line so a half-written line doesn't count.
-done_re='^kbd: ready; key presses are logged below.?$|^PANIC: .*\).?$'
+done_re='^mouse: \(512, 384\) buttons ---.?$|^PANIC: .*\).?$'
 selftest_done_re='^selftest: drivers [0-9]+/[0-9]+ passed.?$|^PANIC: .*\).?$'
 user_done_re='^selftest: user [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$'
 panic_re='^PANIC: .*[0-9a-f)].?$'
@@ -129,11 +129,12 @@ check "enumerates QEMU's PCI devices" \
     '^pci 00:02\.0 1234:1111 class 03\.00\.00 rev [0-9a-f]{2} VGA controller$' \
     '^pci: [0-9]+ devices on 1 buses$'
 
-check "binds the COM1, display and keyboard drivers" \
+check "binds the COM1, display, keyboard and touchpad drivers" \
     '^dev com1 driver=uart16550 bound$' \
     '^dev fb0 driver=vbefb bound$' \
     '^dev kbd0 driver=ps2kbd bound$' \
-    '^drivers: 3 registered, 3 devices bound, 0 failed; [0-9]+ PCI devices without a driver$'
+    '^dev mouse0 driver=ps2mouse bound$' \
+    '^drivers: 4 registered, 4 devices bound, 0 failed; [0-9]+ PCI devices without a driver$'
 
 check "shows the boot log on screen (navy = ready)" \
     '^console: 128x48 characters, video BIOS font at 0x[0-9a-f]{5}$' \
@@ -156,6 +157,18 @@ check "keyboard: IRQ-driven key events decoded (shift, caps lock, ctrl, E0 keys)
     '^kbd: key 0x02e ascii 0x03 mods 0x2$' \
     '^kbd: key 0x001 ascii 0x1b$' \
     '^kbd: key 0x00e ascii 0x08$' \
+    '!PANIC'
+
+KEYS="move:40,30 move:-10,0 press:1 release press:2 release press:4 release move:0,-900 move:5000,0" \
+KEYS_DONE='^mouse: \(1023, 0\) buttons ---' \
+    boot_until build/litekernx.img "$done_re" 20
+check "touchpad: IRQ 12 packets decoded (direction, buttons, clamped at the edges)" \
+    '^mouse: \(552, 414\) buttons ---$' \
+    '^mouse: \(542, 414\) buttons ---$' \
+    '^mouse: \(542, 414\) buttons L--$' \
+    '^mouse: \(542, 414\) buttons --R$' \
+    '^mouse: \(542, 414\) buttons -M-$' \
+    '^mouse: \(1023, 0\) buttons ---$' \
     '!PANIC'
 
 boot_until build/test-drivers/litekernx.img "$selftest_done_re" 20

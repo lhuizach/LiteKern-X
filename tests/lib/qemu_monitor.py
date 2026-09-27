@@ -34,11 +34,22 @@ def shot(sock_path, out):
 
 
 def keys(sock_path, names):
+    """Each name is a QEMU sendkey key ("a", "shift-a", "ret"), or one of
+    move:DX,DY / press:BUTTONS / release (monitor mouse_move / mouse_button;
+    BUTTONS is QEMU's mask: 1 left, 2 right, 4 middle)."""
     s = socket.socket(socket.AF_UNIX)
     s.connect(sock_path)
     for name in names:
-        s.sendall(b"sendkey " + name.encode() + b"\n")
-        time.sleep(0.15)            # let the guest take each key before the next
+        if name.startswith("move:"):
+            cmd = "mouse_move " + name[5:].replace(",", " ")
+        elif name.startswith("press:"):
+            cmd = "mouse_button " + name[6:]
+        elif name == "release":
+            cmd = "mouse_button 0"
+        else:
+            cmd = "sendkey " + name
+        s.sendall(cmd.encode() + b"\n")
+        time.sleep(0.15)            # let the guest take each event before the next
     time.sleep(0.2)
     s.close()
 

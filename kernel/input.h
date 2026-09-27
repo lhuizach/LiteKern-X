@@ -44,6 +44,19 @@
 #define MOD_ALT         0x04
 #define MOD_CAPSLOCK    0x08
 
+/* mouse0 (the touchpad): one event per PS/2 packet. Screen convention:
+ * dx > 0 is right, dy > 0 is down. */
+#define MOUSE_GET_DROPPED 1     /* ioctl arg: uint32_t *, events lost to a full queue */
+#define MOUSE_LEFT      0x01
+#define MOUSE_RIGHT     0x02
+#define MOUSE_MIDDLE    0x04
+
+struct mouse_event {
+    int16_t dx, dy;
+    uint8_t buttons;    /* MOUSE_* held after this packet */
+    uint8_t reserved[3];
+};
+
 struct key_event {
     uint16_t key;       /* KEY_* / scancode, see above */
     uint8_t pressed;    /* 1 = press (or auto-repeat), 0 = release */

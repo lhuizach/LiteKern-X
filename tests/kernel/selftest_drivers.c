@@ -193,6 +193,17 @@ void selftest_drivers_run(void)
     check(irq_register(2, ide_shutdown_irq, 0) == -EINVAL && irq_register(16, ide_shutdown_irq, 0) == -EINVAL,
           "IRQ 2 (cascade) and IRQ 16 can't be registered");
 
+    /* Touchpad / mouse driver (drivers/mouse.c). Packet decoding is tested by
+     * moving the VM's mouse (tests/kernel/test-kernel.sh). */
+    device_t *mouse = device_find("mouse0");
+    struct mouse_event mev[2];
+    dropped = 1;
+    check(mouse && mouse->state == DEVICE_BOUND, "mouse0 is bound to the ps2mouse driver");
+    check(dev_read(mouse, mev, sizeof(mev[0]) + 1) == -EINVAL, "reading part of a mouse event -> -EINVAL");
+    check(dev_read(mouse, mev, sizeof(mev)) == 0, "reading with no movement returns 0 (non-blocking)");
+    check(dev_ioctl(mouse, MOUSE_GET_DROPPED, &dropped) == 0 && dropped == 0, "no mouse events dropped");
+    check(irq_register(12, ide_shutdown_irq, 0) == -EBUSY, "a second handler on IRQ 12 -> -EBUSY");
+
     kprintf("selftest: drivers %d/%d passed\n", passed, passed + failed);
     if (failed)
         panic("driver self-test: %d checks failed", failed);

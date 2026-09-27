@@ -70,8 +70,9 @@ Port from v1 deliberately, not wholesale. Suggested order:
    - [ ] Real-hardware check: the EeePC shows the boot log at 1024×600 — photograph it; it answers the §2 VBE-mode and §3 device-list checks too
 2. [x] i8042 controller + keyboard driver — `drivers/i8042.c` (shared with the touchpad: bounded waits, no slow resets), `drivers/kbd.c` (device `kbd0`, IRQ 1, scancode set 1 → `struct key_event` in `kernel/input.h`, US layout, non-blocking `read`). Brought in hardware IRQs: `kernel/irq.c` (8259 PICs remapped to 32–47, lines masked until a driver registers, spurious IRQ 7/15 handled); after boot the kernel idles with interrupts on and logs key presses. Tested by typing into QEMU (`sendkey`) and VirtualBox (`keyboardputstring`)
    - [ ] Real-hardware check: type on the EeePC and see `kbd: key ...` lines appear
-3. [ ] Touchpad/mouse driver (PS/2 aux port on the same i8042 — basic 3-byte PS/2 packets are enough; Elantech/Synaptics extended modes are a Non-Goal). Needed by Phase 2's cursor
-4. [ ] Disk/storage driver, if needed at this stage
+3. [x] Touchpad/mouse driver (PS/2 aux port on the same i8042 — basic 3-byte PS/2 packets are enough; Elantech/Synaptics extended modes are a Non-Goal). Needed by Phase 2's cursor — `drivers/mouse.c` (device `mouse0`, IRQ 12, `struct mouse_event` in `kernel/input.h`, screen convention dy > 0 = down, packet resync + overflow discard). The idle loop tracks a pointer position and logs clicks and (rate-limited) movement. Tested by moving/clicking QEMU's mouse through the monitor; binds in VirtualBox
+   - [ ] Real-hardware check: move and tap on the EeePC touchpad and see `mouse: (x, y) buttons ...` lines
+4. [x] ~~Disk/storage driver, if needed at this stage~~ — not needed: apps ship in a read-only ramdisk in the boot image (decided 2026-09-27, see `docs/NON-GOALS.md`)
 
 Each driver: implements full `driver_t` interface, tested in isolation, fails loudly not silently.
 

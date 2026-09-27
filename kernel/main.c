@@ -50,37 +50,86 @@ static const struct boot_info *keep_boot_info(uint32_t magic, const struct boot_
     return &boot_info;
 }
 
-/* After boot: interrupts on, sleep until an IRQ, and log key presses so the
- * keyboard can be checked on real hardware. Nothing else runs yet (Phase 2
- * brings the GUI and apps). */
-static void __attribute__((noreturn)) idle(void)
+/* After boot: interrupts on, sleep until an IRQ, and log input so the
+ * keyboard and touchpad can be checked on real hardware. Nothing else runs
+ * yet (Phase 2 brings the cursor, GUI and apps). */
+#define MOUSE_LOG_MS 100    /* movement is logged at most this often */
+
+static void log_key(const struct key_event *ev)
 {
-    device_t *kbd = device_find("kbd0");
+    if (!ev->pressed)
+        return;
+    kprintf("kbd: key 0x%03x", ev->key);
+    if (ev->ascii >= 0x20 && ev->ascii < 0x7f)
+        kprintf(" '%c'", ev->ascii);
+    else if (ev->ascii)
+        kprintf(" ascii 0x%02x", ev->ascii);
+    if (ev->mods)
+        kprintf(" mods 0x%x", ev->mods);
+    kprintf("\n");
+}
+
+static void log_pointer(int x, int y, uint8_t buttons)
+{
+    kprintf("mouse: (%d, %d) buttons %c%c%c\n", x, y,
+            buttons & MOUSE_LEFT ? 'L' : '-', buttons & MOUSE_MIDDLE ? 'M' : '-',
+            buttons & MOUSE_RIGHT ? 'R' : '-');
+}
+
+static void __attribute__((noreturn)) idle(const struct boot_info *bi)
+{
+    device_t *kbd = device_find("kbd0"), *mouse = device_find("mouse0");
+    int w = (int)bi->fb_width, h = (int)bi->fb_height;
+    int x = w / 2, y = h / 2, moved = 0;
+    uint8_t buttons = 0;
+    uint32_t last_log = 0;
+
     if (kbd && kbd->state == DEVICE_BOUND)
         kprintf("kbd: ready; key presses are logged below\n");
+    if (mouse && mouse->state == DEVICE_BOUND) {
+        kprintf("mouse: ready; pointer starts at the centre, movement and buttons logged below\n");
+        log_pointer(x, y, buttons);
+    }
 
     for (;;) {
-        struct key_event ev[8];
+        struct key_event keys[8];
+        struct mouse_event moves[16];
         /* Check for events with interrupts off, so one arriving between the
          * check and the hlt can't be missed: `sti; hlt` is atomic. */
         __asm__ volatile("cli");
-        int n = dev_read(kbd, ev, sizeof(ev));
-        if (n <= 0) {
+        int nk = dev_read(kbd, keys, sizeof(keys));
+        int nm = dev_read(mouse, moves, sizeof(moves));
+        if (nk <= 0 && nm <= 0 && !moved) {
             __asm__ volatile("sti; hlt");
             continue;
         }
         __asm__ volatile("sti");
-        for (int i = 0; i < n / (int)sizeof(ev[0]); i++) {
-            if (!ev[i].pressed)
-                continue;
-            kprintf("kbd: key 0x%03x", ev[i].key);
-            if (ev[i].ascii >= 0x20 && ev[i].ascii < 0x7f)
-                kprintf(" '%c'", ev[i].ascii);
-            else if (ev[i].ascii)
-                kprintf(" ascii 0x%02x", ev[i].ascii);
-            if (ev[i].mods)
-                kprintf(" mods 0x%x", ev[i].mods);
-            kprintf("\n");
+
+        for (int i = 0; i < nk / (int)sizeof(keys[0]); i++)
+            log_key(&keys[i]);
+
+        for (int i = 0; i < nm / (int)sizeof(moves[0]); i++) {
+            x += moves[i].dx;
+            y += moves[i].dy;
+            x = x < 0 ? 0 : x >= w ? w - 1 : x;
+            y = y < 0 ? 0 : y >= h ? h - 1 : y;
+            moved |= moves[i].dx || moves[i].dy;
+            if (moves[i].buttons != buttons) {      /* clicks are always logged */
+                buttons = moves[i].buttons;
+                log_pointer(x, y, buttons);
+                moved = 0;
+                last_log = uptime_ms();
+            }
+        }
+        if (moved && uptime_ms() - last_log >= MOUSE_LOG_MS) {
+            log_pointer(x, y, buttons);
+            moved = 0;
+            last_log = uptime_ms();
+        } else if (moved) {
+            /* Movement not logged yet and no timer IRQ exists to wake us:
+             * spin briefly instead of halting, so the final position of a
+             * gesture still gets logged. */
+            __asm__ volatile("pause");
         }
     }
 }
@@ -159,5 +208,5 @@ void kmain(uint32_t magic, const struct boot_info *handoff)
     *(volatile uint8_t *)(uintptr_t)kmain = 0xcc;
 #endif
 
-    idle();
+    idle(bi);
 }

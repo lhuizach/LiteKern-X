@@ -140,13 +140,17 @@ int i8042_device_cmd(int port, uint8_t byte)
     if (write_data(byte))
         return -EIO;
     /* Interrupts for this port may already be on, so poll for the ACK here
-     * with the caller holding interrupts off. */
-    for (int tries = 0; tries < 4; tries++) {
-        int r = read_data();
+     * with the caller holding interrupts off. Only a byte from the same port
+     * counts: with the keyboard live, a key press can arrive in between. */
+    for (int tries = 0; tries < 8; tries++) {
+        if (wait_read())
+            return -EIO;
+        int from_port2 = (inb(I8042_STATUS) & I8042_STATUS_AUX) != 0;
+        uint8_t r = inb(I8042_DATA);
+        if (from_port2 != (port == 2))
+            continue;               /* the other device's byte: not our answer */
         if (r == ACK)
             return 0;
-        if (r < 0)
-            return -EIO;
     }
     return -EIO;
 }

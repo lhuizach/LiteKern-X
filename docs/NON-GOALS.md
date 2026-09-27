@@ -39,10 +39,15 @@ These are things LiteKern X is deliberately **not** building for v1.0. If you wa
 - Website or landing page work before Phase 4
 - GRUB / Multiboot. X uses its own bootloader (decided 2026-09-27) so every millisecond of the boot path is under our control.
 - A cross-compiler toolchain (i686-elf-gcc) for now. Host `gcc -m32 -ffreestanding` is enough until it clearly isn't.
+- A disk driver and filesystem for v1.0 (decided 2026-09-27). `.lkx` apps ship in a read-only ramdisk inside the boot image, loaded by stage 2 alongside the kernel (built in Phase 2 §5). Nothing is written back to disk.
+
+## Decided
+| Question | Answer | Where it's built |
+|---|---|---|
+| Where do `.lkx` apps load from? | A read-only ramdisk in the boot image. No disk driver, no filesystem. | Phase 2 §5 |
+| Screen resolution? | Stage 2 prefers the panel's native 1024×600, then falls back to 1024×768 and 800×600 (32 bpp only). | Phase 1 §2 (done) |
 
 ## Open questions (decide before the named step, then move the answer to a phase file or to this list)
 | Question | Decide by | Notes |
 |---|---|---|
-| Where do `.lkx` apps load from: a ramdisk bundled in the image, or a disk filesystem? | Phase 1 §6 | This decides whether the disk driver is in Phase 1 at all. |
 | One app at a time, or several running at once? | Phase 2 §3 | This decides whether a scheduler or task switching is needed. |
-| Screen resolution: native 1024×600 via the GMA 950 VBIOS, or a standard VESA mode? | Phase 1 §6 | QEMU's standard VGA has no 1024×600 VBE mode, so dev and real hardware may differ. |
