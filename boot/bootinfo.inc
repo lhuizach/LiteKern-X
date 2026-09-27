@@ -1,0 +1,52 @@
+; LiteKern X — boot protocol constants and structures (assembly side).
+; Must match boot/bootinfo.h exactly. Documented in docs/BOOT-PROTOCOL.md.
+
+BOOT_T0_ADDR        equ 0x0500      ; qword, written by stage 1
+BOOT_INFO_ADDR      equ 0x0600
+BOOT_MMAP_ADDR      equ 0x0700
+BOOT_MMAP_MAX       equ 32
+E820_ENTRY_SIZE     equ 24
+
+BOOT_INFO_MAGIC     equ 'LKXB'
+BOOT_INFO_VERSION   equ 1
+KERNEL_MAGIC        equ 'LKXK'
+KERNEL_VERSION      equ 1
+
+; bi.flags
+BI_FLAG_FB              equ 1 << 0  ; framebuffer fields valid
+BI_FLAG_MMAP_TRUNCATED  equ 1 << 1  ; BIOS reported more than BOOT_MMAP_MAX entries
+
+; bi.tsc[] indices
+TSC_STAGE1          equ 0   ; T0: stage 1 entry
+TSC_STAGE2          equ 1   ; stage 2 entry
+TSC_KERNEL_LOADED   equ 2   ; kernel read from disk  -> end of "bootloader" phase
+TSC_VBE_DONE        equ 3   ; VBE mode set           -> end of "vbe" phase
+TSC_KERNEL_ENTRY    equ 4   ; about to jump to the kernel
+TSC_COUNT           equ 5
+
+struc bi
+    .magic          resd 1
+    .version        resd 1
+    .boot_drive     resd 1
+    .flags          resd 1
+    .tsc            resq TSC_COUNT
+    .mmap_addr      resd 1
+    .mmap_count     resd 1
+    .fb_addr        resd 1
+    .fb_pitch       resd 1
+    .fb_width       resd 1
+    .fb_height      resd 1
+    .fb_bpp         resd 1
+    .kernel_start   resd 1
+    .kernel_end     resd 1
+endstruc
+
+; Kernel image header: the first bytes of the kernel image on disk.
+struc kh
+    .magic          resd 1          ; KERNEL_MAGIC
+    .version        resd 1          ; KERNEL_VERSION
+    .load_addr      resd 1          ; physical load address, >= 1 MiB
+    .entry          resd 1          ; physical entry point
+    .file_size      resd 1          ; bytes in the image, header included
+    .mem_end        resd 1          ; end of the kernel in memory (bss zeroed up to here)
+endstruc

@@ -2,7 +2,7 @@
 
 A from-scratch 32-bit x86 OS for the ASUS EeePC 1000HE (Intel Atom N270). It's a clean-slate rewrite of LiteKern v1 that keeps the KERN86 app model (`.lkx`, `kerns.json`, `kern86.h`).
 
-**Status:** Phase 1, section 2 (minimal boot path). The stage 1 boot sector is done; stage 2 is currently a test stub.
+**Status:** Phase 1, section 2 (minimal boot path). The bootloader (stage 1 and stage 2) works in the VM. The kernel is currently a test stub that checks the handoff and paints the screen.
 
 - Plan: [`LiteKernX-Roadmap/`](LiteKernX-Roadmap/). The phase files there are the source of truth.
 - [Non-Goals](docs/NON-GOALS.md)
@@ -11,9 +11,9 @@ A from-scratch 32-bit x86 OS for the ASUS EeePC 1000HE (Intel Atom N270). It's a
 ## Layout
 ```
 LiteKernX-Roadmap/   the plan, phase by phase
-boot/                custom bootloader (stage 1 MBR; stage 2 next) — see docs/BOOT-PROTOCOL.md
+boot/                custom bootloader (stage 1 MBR, stage 2) + boot_info layout — see docs/BOOT-PROTOCOL.md
 docs/                non-goals, boot budget, boot protocol
-tests/boot/          stage 1 tests + the stage 2 stub they boot
+tests/boot/          bootloader tests + the stage 2 / kernel stubs they boot
 vm/qemu.sh           QEMU dev VM configured to approximate the EeePC 1000HE
 vm/smoke/            boot-sector smoke test for the VM itself
 tools/setup-wsl.sh   installs the toolchain + QEMU in WSL Ubuntu
@@ -30,8 +30,8 @@ wsl make check-tools
 ## Dev VM
 | Command | What it does |
 |---|---|
-| `wsl make` | Builds `build/litekernx.img` (stage 1 + stage 2) |
-| `wsl make test` | Runs all tests: VM smoke test + stage 1 tests (good image, bad magic, disk read error) |
+| `wsl make` | Builds `build/litekernx.img` (stage 1 + stage 2 + kernel) |
+| `wsl make test` | Runs all tests: the VM smoke test, plus the stage 1 and stage 2 tests (good boot and every failure path) |
 | `wsl make smoke` | Boots the smoke image headless and checks serial output + exit code |
 | `wsl make smoke-gui` | Same image in a QEMU window (shown through WSLg) |
 | `wsl make run` | Builds and boots `build/litekernx.img` in a window |

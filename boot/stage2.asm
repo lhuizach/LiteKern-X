@@ -1,0 +1,515 @@
+; LiteKern X — stage 2 bootloader.
+;
+; Entered from stage 1 in real mode (see docs/BOOT-PROTOCOL.md). In order:
+;   1. init COM1, set up boot_info, copy T0
+;   2. E820 memory map
+;   3. enable A20
+;   4. load the kernel to the 0x10000 bounce buffer and validate its header
+;   5. set the VBE mode (last BIOS text output possible before this)
+;   6. switch to 32-bit protected mode, copy the kernel to its load address,
+;      zero its bss, jump to it with EAX = 'LKXB', EBX = &boot_info
+;
+; Every failure prints "LKX stage2: <reason>" to the screen + COM1 and halts.
+
+bits 16
+org 0x8000
+
+%include "boot/bootinfo.inc"
+
+COM1            equ 0x3f8
+READ_TRIES      equ 3
+BOUNCE_SEG      equ 0x1000          ; kernel is read to 0x10000 ...
+BOUNCE_LIMIT    equ 0x80000         ; ... and must fit below here (448 KiB)
+KERNEL_MAX_SECTORS equ (BOUNCE_LIMIT - BOUNCE_SEG * 16) / 512
+KERNEL_MEM_LIMIT equ 0x1000000     ; kernel (incl. bss) must end below 16 MiB
+READ_CHUNK      equ 64             ; sectors per read: 32 KiB never crosses a 64 KiB boundary
+VBE_INFO        equ 0x3000          ; 512-byte VBE controller info scratch
+VBE_MODE_INFO   equ 0x3200          ; 256-byte VBE mode info scratch
+
+; Layout checks against boot/bootinfo.h (assembly fails if they drift).
+    times -(bi_size != 92) db 0
+    times -(kh_size != 24) db 0
+
+    dd 'LKX2'                       ; stage 1 checks this, then jumps to entry
+
+entry:
+    mov [boot_drive], dl
+    rdtsc
+    mov [tsc_stage2], eax
+    mov [tsc_stage2 + 4], edx
+    call serial_init
+
+    ; boot_info: zero it (and the mmap area after it), then fill in basics.
+    mov di, BOOT_INFO_ADDR
+    mov cx, (BOOT_MMAP_ADDR + BOOT_MMAP_MAX * E820_ENTRY_SIZE - BOOT_INFO_ADDR) / 2
+    xor ax, ax
+    rep stosw
+    mov dword [BOOT_INFO_ADDR + bi.magic], BOOT_INFO_MAGIC
+    mov dword [BOOT_INFO_ADDR + bi.version], BOOT_INFO_VERSION
+    movzx eax, byte [boot_drive]
+    mov [BOOT_INFO_ADDR + bi.boot_drive], eax
+    mov eax, [BOOT_T0_ADDR]
+    mov edx, [BOOT_T0_ADDR + 4]
+    mov [BOOT_INFO_ADDR + bi.tsc + TSC_STAGE1 * 8], eax
+    mov [BOOT_INFO_ADDR + bi.tsc + TSC_STAGE1 * 8 + 4], edx
+    mov eax, [tsc_stage2]
+    mov edx, [tsc_stage2 + 4]
+    mov [BOOT_INFO_ADDR + bi.tsc + TSC_STAGE2 * 8], eax
+    mov [BOOT_INFO_ADDR + bi.tsc + TSC_STAGE2 * 8 + 4], edx
+
+    call read_e820
+    call enable_a20
+    call load_kernel
+    mov bx, TSC_KERNEL_LOADED
+    call mark_tsc
+    call set_vbe_mode
+    mov bx, TSC_VBE_DONE
+    call mark_tsc
+    jmp enter_pmode
+
+; --- 2. E820 memory map -------------------------------------------------------
+
+read_e820:
+    mov di, BOOT_MMAP_ADDR
+    xor ebx, ebx                    ; continuation value
+    xor bp, bp                      ; entry count
+.next:
+    mov dword [di + 20], 1          ; ACPI 3 "valid" bit, in case the BIOS returns 20 bytes
+    mov eax, 0xe820
+    mov ecx, E820_ENTRY_SIZE
+    mov edx, 'PAMS'                 ; 'SMAP'
+    int 0x15
+    jc .end                         ; carry: end of list (or unsupported, if bp == 0)
+    cmp eax, 'PAMS'
+    jne .end
+    jcxz .skip                      ; ignore zero-size replies
+    cmp dword [di + 8], 0           ; ignore zero-length regions
+    jne .keep
+    cmp dword [di + 12], 0
+    je .skip
+.keep:
+    inc bp
+    add di, E820_ENTRY_SIZE
+    cmp bp, BOOT_MMAP_MAX
+    jb .skip
+    or dword [BOOT_INFO_ADDR + bi.flags], BI_FLAG_MMAP_TRUNCATED
+    jmp .end
+.skip:
+    test ebx, ebx
+    jnz .next
+.end:
+    test bp, bp
+    jz .fail
+    movzx eax, bp
+    mov [BOOT_INFO_ADDR + bi.mmap_count], eax
+    mov dword [BOOT_INFO_ADDR + bi.mmap_addr], BOOT_MMAP_ADDR
+    ret
+.fail:
+    mov si, msg_e820
+    jmp fail
+
+; --- 3. A20 -------------------------------------------------------------------
+
+enable_a20:
+    call a20_on
+    je .ok
+    mov ax, 0x2401                  ; BIOS
+    int 0x15
+    call a20_on
+    je .ok
+    in al, 0x92                     ; "fast A20" (ICH7 supports it)
+    test al, 2
+    jnz .check
+    or al, 2
+    and al, 0xfe                    ; never set bit 0: that resets the machine
+    out 0x92, al
+.check:
+    call a20_on
+    je .ok
+    mov si, msg_a20
+    jmp fail
+.ok:
+    ret
+
+; ZF=1 if A20 is enabled. Compares 0000:7DFE (stage 1's 0xAA55) with its
+; 1 MiB alias FFFF:7E0E, restoring both bytes afterwards.
+a20_on:
+    push ds
+    push es
+    xor ax, ax
+    mov ds, ax
+    not ax
+    mov es, ax
+    mov si, 0x7dfe
+    mov di, 0x7e0e
+    mov al, [ds:si]
+    mov ah, [es:di]
+    push ax
+    mov byte [ds:si], 0x00
+    mov byte [es:di], 0xff
+    cmp byte [ds:si], 0xff          ; changed through the alias -> wrapped -> A20 off
+    pop ax
+    mov [es:di], ah
+    mov [ds:si], al
+    pop es
+    pop ds
+    jne .on
+    or al, 1                        ; clear ZF (al|1 is never 0)
+    ret
+.on:
+    cmp al, al                      ; set ZF
+    ret
+
+; --- 4. kernel ----------------------------------------------------------------
+
+load_kernel:
+    ; Header first: one sector to the bounce buffer.
+    mov dword [dap.lba], KERNEL_LBA
+    mov word [dap.seg], BOUNCE_SEG
+    mov cx, 1
+    call read_sectors
+
+    push ds
+    mov ax, BOUNCE_SEG
+    mov ds, ax
+    mov esi, [kh.magic]
+    mov edi, [kh.version]
+    mov eax, [kh.load_addr]
+    mov ebx, [kh.entry]
+    mov ecx, [kh.file_size]
+    mov edx, [kh.mem_end]
+    pop ds
+    mov [kernel_load], eax
+    mov [kernel_entry], ebx
+    mov [kernel_size], ecx
+    mov [kernel_mem_end], edx
+
+    cmp esi, KERNEL_MAGIC
+    jne .bad
+    cmp edi, KERNEL_VERSION
+    jne .bad
+    cmp eax, 0x100000               ; load at or above 1 MiB
+    jb .bad
+    cmp ecx, kh_size
+    jb .bad
+    cmp ebx, eax                    ; load <= entry < load + file_size
+    jb .bad
+    add eax, ecx
+    jc .bad
+    cmp ebx, eax
+    jae .bad
+    cmp edx, eax                    ; mem_end >= load + file_size
+    jb .bad
+    cmp edx, KERNEL_MEM_LIMIT       ; stay well inside the EeePC's 1 GiB
+    ja .bad
+    add ecx, 511
+    shr ecx, 9                      ; sectors
+    cmp ecx, KERNEL_MAX_SECTORS
+    ja .too_big
+
+    ; Whole image, in 32 KiB chunks (re-reads the header sector; simpler).
+    mov dword [dap.lba], KERNEL_LBA
+    mov word [dap.seg], BOUNCE_SEG
+    mov di, cx                      ; sectors remaining
+.chunk:
+    mov cx, di
+    cmp cx, READ_CHUNK
+    jbe .read
+    mov cx, READ_CHUNK
+.read:
+    push cx
+    call read_sectors
+    pop cx
+    movzx eax, cx
+    add [dap.lba], eax
+    shl cx, 5                       ; sectors * 512 / 16 = paragraphs
+    add [dap.seg], cx
+    shr cx, 5
+    sub di, cx
+    jnz .chunk
+
+    mov eax, [kernel_load]
+    mov [BOOT_INFO_ADDR + bi.kernel_start], eax
+    mov eax, [kernel_mem_end]
+    mov [BOOT_INFO_ADDR + bi.kernel_end], eax
+    ret
+.bad:
+    mov si, msg_kernel_bad
+    jmp fail
+.too_big:
+    mov si, msg_kernel_big
+    jmp fail
+
+; Read CX sectors from [dap.lba] to [dap.seg]:0. Retries, fails loudly.
+read_sectors:
+    mov [read_count], cx
+    mov bp, READ_TRIES
+.try:
+    mov cx, [read_count]            ; BIOS may overwrite dap.count on failure
+    mov [dap.count], cx
+    mov si, dap
+    mov dl, [boot_drive]
+    mov ah, 0x42
+    int 0x13
+    jnc .ok
+    dec bp
+    jz .fail
+    xor ah, ah                      ; reset the drive, then retry
+    mov dl, [boot_drive]
+    int 0x13
+    jmp .try
+.ok:
+    ret
+.fail:
+    mov si, msg_read
+    jmp fail
+
+; --- 5. VBE -------------------------------------------------------------------
+
+; Walks the VBE mode list once, stopping early at 1024x600. Accepts only
+; 32 bpp direct-colour modes with a linear framebuffer.
+; Preference: 1024x600 (the EeePC panel) > 1024x768 > 800x600.
+set_vbe_mode:
+    mov di, VBE_INFO
+    mov dword [di], 'VBE2'          ; ask for VBE 2.0+ info
+    mov ax, 0x4f00
+    int 0x10
+    cmp ax, 0x004f
+    jne .none
+    cmp dword [VBE_INFO], 'VESA'
+    jne .none
+    cmp word [VBE_INFO + 4], 0x0200 ; linear framebuffers need VBE 2.0
+    jb .none
+
+    lfs si, [VBE_INFO + 14]         ; far pointer to the mode list
+    mov word [best_mode], 0xffff
+    mov byte [best_score], 0
+.next:
+    mov cx, [fs:si]
+    add si, 2
+    cmp cx, 0xffff
+    je .chosen
+    mov [cur_mode], cx              ; don't trust the BIOS to preserve CX
+    mov di, VBE_MODE_INFO
+    mov ax, 0x4f01
+    int 0x10
+    cmp ax, 0x004f
+    jne .next
+    mov ax, [VBE_MODE_INFO]         ; attributes: supported, graphics, LFB
+    and ax, 0x0091
+    cmp ax, 0x0091
+    jne .next
+    cmp byte [VBE_MODE_INFO + 0x19], 32     ; bpp
+    jne .next
+    cmp byte [VBE_MODE_INFO + 0x1b], 6      ; memory model: direct colour
+    jne .next
+    mov ax, [VBE_MODE_INFO + 0x12]  ; width
+    mov dx, [VBE_MODE_INFO + 0x14]  ; height
+    xor bl, bl
+    cmp ax, 800
+    jne .not800
+    cmp dx, 600
+    jne .score
+    mov bl, 1
+    jmp .score
+.not800:
+    cmp ax, 1024
+    jne .score
+    cmp dx, 768
+    jne .not768
+    mov bl, 2
+    jmp .score
+.not768:
+    cmp dx, 600
+    jne .score
+    mov bl, 3
+.score:
+    cmp bl, [best_score]
+    jbe .next
+    mov [best_score], bl
+    mov ax, [cur_mode]
+    mov [best_mode], ax
+    cmp bl, 3
+    jne .next                       ; exact panel match: stop walking
+
+.chosen:
+    mov cx, [best_mode]
+    cmp cx, 0xffff
+    je .none
+    mov di, VBE_MODE_INFO           ; re-read the winner's info
+    mov ax, 0x4f01
+    int 0x10
+    cmp ax, 0x004f
+    jne .none
+    mov bx, cx
+    or bx, 0x4000                   ; use the linear framebuffer
+    mov ax, 0x4f02
+    int 0x10
+    cmp ax, 0x004f
+    jne .none
+
+    mov eax, [VBE_MODE_INFO + 0x28]
+    mov [BOOT_INFO_ADDR + bi.fb_addr], eax
+    movzx eax, word [VBE_MODE_INFO + 0x10]
+    mov [BOOT_INFO_ADDR + bi.fb_pitch], eax
+    movzx eax, word [VBE_MODE_INFO + 0x12]
+    mov [BOOT_INFO_ADDR + bi.fb_width], eax
+    movzx eax, word [VBE_MODE_INFO + 0x14]
+    mov [BOOT_INFO_ADDR + bi.fb_height], eax
+    movzx eax, byte [VBE_MODE_INFO + 0x19]
+    mov [BOOT_INFO_ADDR + bi.fb_bpp], eax
+    or dword [BOOT_INFO_ADDR + bi.flags], BI_FLAG_FB
+    ret
+.none:
+    mov si, msg_vbe
+    jmp fail
+
+; --- 6. protected mode --------------------------------------------------------
+
+enter_pmode:
+    cli
+    lgdt [gdt_desc]
+    mov eax, cr0
+    or al, 1
+    mov cr0, eax
+    jmp 0x08:pmode
+
+bits 32
+pmode:
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+    mov esp, 0x7c00
+
+    ; Copy the kernel from the bounce buffer, then zero its bss.
+    mov esi, BOUNCE_SEG * 16
+    mov edi, [kernel_load]
+    mov ecx, [kernel_size]
+    add ecx, 3
+    shr ecx, 2
+    rep movsd
+    mov edi, [kernel_load]
+    add edi, [kernel_size]
+    mov ecx, [kernel_mem_end]
+    sub ecx, edi
+    xor eax, eax
+    rep stosb
+
+    rdtsc
+    mov [BOOT_INFO_ADDR + bi.tsc + TSC_KERNEL_ENTRY * 8], eax
+    mov [BOOT_INFO_ADDR + bi.tsc + TSC_KERNEL_ENTRY * 8 + 4], edx
+
+    mov eax, BOOT_INFO_MAGIC
+    mov ebx, BOOT_INFO_ADDR
+    jmp [kernel_entry]
+
+bits 16
+
+; --- helpers ------------------------------------------------------------------
+
+; Store rdtsc into boot_info.tsc[BX].
+mark_tsc:
+    rdtsc
+    shl bx, 3
+    mov [BOOT_INFO_ADDR + bi.tsc + bx], eax
+    mov [BOOT_INFO_ADDR + bi.tsc + bx + 4], edx
+    ret
+
+serial_init:                        ; COM1: 115200 8N1, FIFOs on
+    mov dx, COM1 + 1
+    xor al, al
+    out dx, al
+    mov dx, COM1 + 3
+    mov al, 0x80
+    out dx, al
+    mov dx, COM1
+    mov al, 1
+    out dx, al
+    mov dx, COM1 + 1
+    xor al, al
+    out dx, al
+    mov dx, COM1 + 3
+    mov al, 0x03
+    out dx, al
+    mov dx, COM1 + 2
+    mov al, 0xc7
+    out dx, al
+    ret
+
+fail:
+    push si
+    mov si, msg_prefix
+    call print
+    pop si
+    call print
+.halt:
+    cli
+    hlt
+    jmp .halt
+
+; Print NUL-terminated DS:SI to the screen and COM1 (bounded UART wait).
+print:
+    lodsb
+    test al, al
+    jz .done
+    push ax
+    mov dx, COM1 + 5
+    mov cx, 0x8000
+.tx:
+    in al, dx
+    test al, 0x20
+    loopz .tx
+    pop ax
+    mov dx, COM1
+    out dx, al
+    mov ah, 0x0e
+    mov bx, 0x0007
+    int 0x10
+    jmp print
+.done:
+    ret
+
+; --- data ---------------------------------------------------------------------
+
+msg_prefix      db "LKX stage2: ", 0
+msg_e820        db "E820 memory map unavailable", 13, 10, 0
+msg_a20         db "cannot enable A20", 13, 10, 0
+msg_read        db "kernel read error", 13, 10, 0
+msg_kernel_bad  db "bad kernel header", 13, 10, 0
+msg_kernel_big  db "kernel too big", 13, 10, 0
+msg_vbe         db "no usable VBE mode (need 32 bpp LFB)", 13, 10, 0
+
+align 8
+gdt:
+    dq 0                            ; null
+    dq 0x00cf9a000000ffff           ; 0x08: code, base 0, 4 GiB, 32-bit, ring 0
+    dq 0x00cf92000000ffff           ; 0x10: data, base 0, 4 GiB, 32-bit, ring 0
+gdt_desc:
+    dw gdt_desc - gdt - 1
+    dd gdt
+
+dap:                                ; int 13h AH=42h disk address packet
+    db 0x10, 0
+.count: dw 0
+.off:   dw 0
+.seg:   dw 0
+.lba:   dq 0
+
+boot_drive      db 0
+best_score      db 0
+best_mode       dw 0
+cur_mode        dw 0
+read_count      dw 0
+tsc_stage2      dq 0
+kernel_load     dd 0
+kernel_entry    dd 0
+kernel_size     dd 0
+kernel_mem_end  dd 0
+
+; Pad to whole sectors; the kernel starts on the next one.
+    times (512 - ($ - $$) % 512) % 512 db 0
+stage2_end:
+KERNEL_LBA equ 1 + (stage2_end - $$) / 512

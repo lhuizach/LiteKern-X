@@ -5,25 +5,32 @@ BUILD := build
 QEMU  := bash vm/qemu.sh
 IMAGE := $(BUILD)/litekernx.img
 
-# Until the real stage 2 exists (Phase 1 section 2), images boot a test stub.
-STAGE2_SRC := tests/boot/stage2-stub.asm
+NASM  := nasm -f bin -I./
+
+# Until the real kernel exists (Phase 1 section 2), images boot a test stub.
+KERNEL_SRC := tests/boot/kernel-stub.asm
 
 .PHONY: all run debug test test-boot smoke smoke-gui check-tools clean
 
 all: $(IMAGE)
 
 # --- boot image -------------------------------------------------------------
+# Layout (docs/BOOT-PROTOCOL.md): stage 1 | stage 2 (whole sectors) | kernel
 
-$(BUILD)/stage2.bin: $(STAGE2_SRC) | $(BUILD)
-	nasm -f bin -o $@ $<
+$(BUILD)/stage2.bin: boot/stage2.asm boot/bootinfo.inc | $(BUILD)
+	$(NASM) -o $@ $<
 
-# Stage 1 needs stage 2's size baked in.
-$(BUILD)/stage1.bin: boot/stage1.asm $(BUILD)/stage2.bin
-	@s2=$$(( ($$(stat -c %s $(BUILD)/stage2.bin) + 511) / 512 )); \
-	echo "nasm stage1 (stage 2 = $$s2 sectors)"; \
-	nasm -f bin -DSTAGE2_SECTORS=$$s2 -DDISK_SECTORS=$$((1 + s2)) -o $@ $<
+$(BUILD)/kernel.bin: $(KERNEL_SRC) boot/bootinfo.inc | $(BUILD)
+	$(NASM) -o $@ $<
 
-$(IMAGE): $(BUILD)/stage1.bin $(BUILD)/stage2.bin
+# Stage 1 needs stage 2's size and the total image size baked in.
+$(BUILD)/stage1.bin: boot/stage1.asm $(BUILD)/stage2.bin $(BUILD)/kernel.bin
+	@s2=$$(( $$(stat -c %s $(BUILD)/stage2.bin) / 512 )); \
+	k=$$(( ($$(stat -c %s $(BUILD)/kernel.bin) + 511) / 512 )); \
+	echo "nasm stage1 (stage 2 = $$s2 sectors, kernel = $$k sectors)"; \
+	$(NASM) -DSTAGE2_SECTORS=$$s2 -DDISK_SECTORS=$$((1 + s2 + k)) -o $@ $<
+
+$(IMAGE): $(BUILD)/stage1.bin $(BUILD)/stage2.bin $(BUILD)/kernel.bin
 	cat $^ > $@
 	truncate -s %512 $@
 
@@ -39,6 +46,8 @@ test: smoke test-boot
 
 test-boot:
 	@bash tests/boot/test-stage1.sh
+	@echo
+	@bash tests/boot/test-stage2.sh
 
 # --- VM smoke test ----------------------------------------------------------
 

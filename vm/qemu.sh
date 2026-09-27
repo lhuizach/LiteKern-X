@@ -17,7 +17,7 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-usage: vm/qemu.sh [--image FILE] [--headless | --debug]
+usage: vm/qemu.sh [--image FILE] [--headless | --debug] [-- EXTRA QEMU ARGS]
 
   --image FILE   raw disk image to boot (default: build/litekernx.img)
   --headless     no window; serial on stdout; isa-debug-exit enabled so a
@@ -29,11 +29,13 @@ EOF
 
 image=build/litekernx.img
 mode=gui
+extra=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --image)    image="$2"; shift 2 ;;
         --headless) mode=headless; shift ;;
         --debug)    mode=debug; shift ;;
+        --)         shift; extra=("$@"); break ;;
         -h|--help)  usage; exit 0 ;;
         *)          usage >&2; exit 2 ;;
     esac
@@ -70,4 +72,4 @@ case "$mode" in
         ;;
 esac
 
-exec qemu-system-i386 "${args[@]}"
+exec qemu-system-i386 "${args[@]}" "${extra[@]}"

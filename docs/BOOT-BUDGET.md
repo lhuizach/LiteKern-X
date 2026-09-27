@@ -35,7 +35,7 @@ These are first guesses. **Replace them with real measurements as soon as Phase 
 
 ## Known risks
 - **PS/2 resets are slow.** A full keyboard/mouse reset (`0xFF`) plus self-test can take hundreds of ms on real hardware. Avoid full resets if the BIOS has already initialised the i8042, or run them without blocking the boot.
-- **VBE calls on real hardware** go through the GMA 950 video BIOS and can be slow. Query only the modes you need, and don't loop over the whole mode list.
+- **VBE calls on real hardware** go through the GMA 950 video BIOS and can be slow. Stage 2 walks the mode list once and stops at the first 1024×600 match. If `loaded->vbe` turns out to be large on the EeePC, hardcode that machine's 1024×600 mode number and try it first.
 - **Disk reads through BIOS `int 13h`** are slow per call. Load the kernel in as few large reads as possible.
 
 ## Measurements log
