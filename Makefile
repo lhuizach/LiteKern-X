@@ -5,21 +5,40 @@ BUILD := build
 QEMU  := bash vm/qemu.sh
 IMAGE := $(BUILD)/litekernx.img
 
-.PHONY: all run debug smoke smoke-gui check-tools clean
+# Until the real stage 2 exists (Phase 1 section 2), images boot a test stub.
+STAGE2_SRC := tests/boot/stage2-stub.asm
 
-all:
-	@echo "No kernel yet: Phase 1 section 2 (minimal boot path) creates $(IMAGE)."
-	@echo "Try: make check-tools, make smoke, make smoke-gui"
+.PHONY: all run debug test test-boot smoke smoke-gui check-tools clean
 
-NO_IMAGE := { echo "$(IMAGE) doesn't exist yet (Phase 1 section 2). Try: make smoke-gui"; exit 1; }
+all: $(IMAGE)
 
-run:
-	@test -f $(IMAGE) || $(NO_IMAGE)
+# --- boot image -------------------------------------------------------------
+
+$(BUILD)/stage2.bin: $(STAGE2_SRC) | $(BUILD)
+	nasm -f bin -o $@ $<
+
+# Stage 1 needs stage 2's size baked in.
+$(BUILD)/stage1.bin: boot/stage1.asm $(BUILD)/stage2.bin
+	@s2=$$(( ($$(stat -c %s $(BUILD)/stage2.bin) + 511) / 512 )); \
+	echo "nasm stage1 (stage 2 = $$s2 sectors)"; \
+	nasm -f bin -DSTAGE2_SECTORS=$$s2 -DDISK_SECTORS=$$((1 + s2)) -o $@ $<
+
+$(IMAGE): $(BUILD)/stage1.bin $(BUILD)/stage2.bin
+	cat $^ > $@
+	truncate -s %512 $@
+
+run: $(IMAGE)
 	$(QEMU) --image $(IMAGE)
 
-debug:
-	@test -f $(IMAGE) || $(NO_IMAGE)
+debug: $(IMAGE)
 	$(QEMU) --image $(IMAGE) --debug
+
+# --- tests ------------------------------------------------------------------
+
+test: smoke test-boot
+
+test-boot:
+	@bash tests/boot/test-stage1.sh
 
 # --- VM smoke test ----------------------------------------------------------
 

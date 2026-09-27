@@ -1,6 +1,6 @@
 # LiteKern X — Non-Goals
 
-> **Status: DRAFT. Review it, edit it, then tick "Non-Goals list" in `LiteKernX-Roadmap/01-LiteKernX-Base.md`.**
+> **Status: approved 2026-09-27.** Changes are made deliberately, by editing this file.
 
 These are things LiteKern X is deliberately **not** building for v1.0. If you want to work on one of them, first finish the current phase. Then either keep it here, or move it into a phase file on purpose. Starting something that isn't in the plan without deciding to is exactly how v1 ended up the way it did.
 
