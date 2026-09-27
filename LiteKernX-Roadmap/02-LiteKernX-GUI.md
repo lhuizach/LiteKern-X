@@ -1,0 +1,47 @@
+# LiteKern X — Phase 2: GUI & User Look
+**Budget: ~20 hrs**
+**Prerequisite: Phase 1 fully done (see 01-LiteKernX-Base.md Done Criteria)**
+
+Goal: a stable, usable GUI — not decorated yet (that's Phase 3), but functional, responsive, and not broken.
+
+---
+
+## 1. Rendering pipeline (~4 hrs)
+- [ ] Port framebuffer rendering from v1, but running through the Phase 1 display driver interface (not direct hardware access like v1 had)
+- [ ] Basic primitives: fill rect, draw line, blit bitmap, draw text (even a crude bitmap font is fine for now)
+- [ ] Confirm rendering performance doesn't regress vs v1's best state
+
+## 2. Cursor system (~2 hrs)
+- [ ] Port cursor rasterization from v1 (SVG-spec cursors)
+- [ ] Cursor movement driven by the Phase 1 touchpad/mouse driver (keyboard fallback optional)
+- [ ] Confirm no tearing/lag at this stage — this was already a v1 strength, don't lose it
+
+## 3. Window/surface model (~4 hrs)
+- [ ] Decide: single fullscreen surface for now, or a real windowing model? (Given hardware constraints, simple is fine — don't over-scope)
+- [ ] Basic input routing — keyboard/mouse events reach the right surface
+- [ ] Redraw/damage handling so you're not redrawing the whole screen every frame (this matters a lot on Atom-class hardware)
+
+## 4. Core GUI widgets (~5 hrs)
+- [ ] Button, label, basic layout container — minimum set, not a full toolkit
+- [ ] Each widget: state (hover/pressed/disabled), not just static appearance
+- [ ] Keep this minimal — Phase 3 is where these get polished, not here
+
+## 5. KERN86 app integration (~3 hrs)
+- [ ] Port `.lkx` loader, `kerns.json` manifest parsing, `kern86.h` API from v1
+- [ ] Apps run in ring 3 — `kern86.h` becomes a thin user-side wrapper over the Phase 1 syscall gate (`int 0x80`), and the kernel side calls through the driver interface instead of v1's direct hardware access
+- [ ] Extend the syscall table only as the test app needs it (draw/present surface, poll input, exit) — no speculative syscalls
+- [ ] Get ONE minimal test app running end-to-end through the new GUI (doesn't need to be useful — proves load → manifest → API → render → input works)
+
+## 6. Stability pass (~2 hrs)
+- [ ] Stress test: open/close app repeatedly, resize (if applicable), rapid input — look for leaks or crashes
+- [ ] Confirm page fault handler (Phase 1) actually catches bad app behavior instead of taking down the kernel
+
+---
+
+## Phase 2 Done Criteria
+- [ ] GUI renders, responds to input, without crashing under normal use
+- [ ] At least one real KERN86 app runs through the full stack
+- [ ] Redraw is efficient — no full-screen redraw every frame in normal operation
+- [ ] A misbehaving app doesn't crash the kernel (thanks to Phase 1's isolation work)
+
+**Do not start Phase 3 (Polish) until every box above is checked.**

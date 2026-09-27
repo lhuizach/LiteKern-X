@@ -1,0 +1,61 @@
+# LiteKern X — top-level build.
+# Run inside WSL/Linux. From PowerShell in the project folder: `wsl make <target>`.
+
+BUILD := build
+QEMU  := bash vm/qemu.sh
+IMAGE := $(BUILD)/litekernx.img
+
+.PHONY: all run debug smoke smoke-gui check-tools clean
+
+all:
+	@echo "No kernel yet: Phase 1 section 2 (minimal boot path) creates $(IMAGE)."
+	@echo "Try: make check-tools, make smoke, make smoke-gui"
+
+NO_IMAGE := { echo "$(IMAGE) doesn't exist yet (Phase 1 section 2). Try: make smoke-gui"; exit 1; }
+
+run:
+	@test -f $(IMAGE) || $(NO_IMAGE)
+	$(QEMU) --image $(IMAGE)
+
+debug:
+	@test -f $(IMAGE) || $(NO_IMAGE)
+	$(QEMU) --image $(IMAGE) --debug
+
+# --- VM smoke test ----------------------------------------------------------
+
+$(BUILD)/smoke.img: vm/smoke/smoke.asm | $(BUILD)
+	nasm -f bin -o $@ $<
+
+# Headless: boots the smoke image and checks the serial output + exit code.
+smoke: $(BUILD)/smoke.img
+	@set +e; \
+	out=$$(timeout 30 $(QEMU) --headless --image $<); rc=$$?; \
+	printf '%s\n' "$$out"; \
+	if [ $$rc -eq 33 ] && printf '%s' "$$out" | grep -q 'smoke test: OK'; then \
+		echo "PASS: VM boots the image and serial logging works"; \
+	else \
+		echo "FAIL: qemu exit status $$rc (expected 33)"; exit 1; \
+	fi
+
+# Same image in a window, so you can see the VM.
+smoke-gui: $(BUILD)/smoke.img
+	$(QEMU) --image $<
+
+# --- misc -------------------------------------------------------------------
+
+check-tools:
+	@missing=0; \
+	for t in gcc ld nasm gdb qemu-system-i386; do \
+		if command -v $$t >/dev/null; then echo "ok       $$t"; \
+		else echo "MISSING  $$t"; missing=1; fi; \
+	done; \
+	if echo 'int x;' | gcc -m32 -ffreestanding -fno-pie -c -x c - -o /dev/null 2>/dev/null; \
+	then echo "ok       gcc -m32 (freestanding i386)"; \
+	else echo "MISSING  gcc -m32 support (gcc-multilib)"; missing=1; fi; \
+	if [ $$missing -ne 0 ]; then echo "Install with: sudo bash tools/setup-wsl.sh"; exit 1; fi
+
+$(BUILD):
+	mkdir -p $@
+
+clean:
+	rm -rf $(BUILD)

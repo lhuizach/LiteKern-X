@@ -1,0 +1,5 @@
+# Built and run from WSL: keep LF everywhere so shell scripts and Makefiles work.
+* text=auto eol=lf
+*.img binary
+*.iso binary
+*.bin binary
