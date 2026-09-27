@@ -23,7 +23,8 @@ LIBGCC  := $(shell $(CC) -m32 -print-libgcc-file-name)
 KERNEL_OBJS := $(patsubst %.c,$(BUILD)/%.o,$(wildcard kernel/*.c)) \
                $(patsubst %.asm,$(BUILD)/%.asm.o,$(wildcard kernel/*.asm))
 
-.PHONY: all run debug test test-boot test-kernel smoke smoke-gui check-tools clean
+.PHONY: all run debug test test-boot test-kernel smoke smoke-gui check-tools clean \
+        vbox-create vbox vbox-test
 
 all: $(IMAGE)
 
@@ -90,6 +91,18 @@ test-boot:
 
 test-kernel:
 	@bash tests/kernel/test-kernel.sh
+
+# --- VirtualBox VM (vm/vbox.sh) ---------------------------------------------
+# Not part of `make test`: it needs the Windows VirtualBox install.
+
+vbox-create:
+	@bash vm/vbox.sh create
+
+vbox: $(IMAGE)
+	@bash vm/vbox.sh start
+
+vbox-test: $(IMAGE)
+	@bash vm/vbox.sh test
 
 # --- VM smoke test ----------------------------------------------------------
 

@@ -19,6 +19,7 @@ docs/                non-goals, boot budget, boot protocol
 tests/boot/          bootloader tests + the stage 2 / kernel stubs they boot
 tests/kernel/        kernel tests (boot log, exception self-test)
 vm/qemu.sh           QEMU dev VM configured to approximate the EeePC 1000HE
+vm/vbox.sh           VirtualBox dev VM (same profile + a 1024x600 mode)
 vm/smoke/            boot-sector smoke test for the VM itself
 tools/setup-wsl.sh   installs the toolchain + QEMU in WSL Ubuntu
 ```
@@ -41,7 +42,19 @@ wsl make check-tools
 | `wsl make run` | Builds and boots `build/litekernx.img` in a window |
 | `wsl make debug` | Same as `run`, paused, with a gdb stub on `:1234`; interrupts and resets logged to `build/qemu-debug.log` |
 
-Serial output (COM1) always goes to the terminal and to `build/serial.log`. See the header of [`vm/qemu.sh`](vm/qemu.sh) for how the VM differs from the real EeePC. **VM timings don't count toward the boot budget.**
+### VirtualBox VM
+There's a second dev VM, `LiteKern X`, in your Windows VirtualBox. It has the same EeePC-like profile as the QEMU VM, plus a **1024×600** VBE mode like the real panel, which QEMU can't provide. It's driven from WSL by [`vm/vbox.sh`](vm/vbox.sh):
+
+| Command | What it does |
+|---|---|
+| `wsl make vbox-create` | Creates and registers the VM (once) |
+| `wsl make vbox` | Rebuilds, copies the image to the VM's disk, and boots it in a window |
+| `wsl make vbox-test` | Same, but headless: waits for `[boot] ready`, saves `build/vbox/screen.png`, powers off |
+
+The VM's boot log (COM1) goes to `build/vbox/serial.log`. `wsl bash vm/vbox.sh stop|status|destroy` manage the VM. The VM has to be powered off before its disk can be updated.
+
+### Serial output
+In the QEMU VM, serial output (COM1) always goes to the terminal and to `build/serial.log`. See the header of [`vm/qemu.sh`](vm/qemu.sh) for how the VM differs from the real EeePC. **VM timings don't count toward the boot budget.**
 
 ## Toolchain
 Host `gcc -m32 -ffreestanding -fno-pie -fno-stack-protector -nostdlib`, GNU `ld` and `nasm`, all in WSL. A proper `i686-elf` cross-compiler is a Non-Goal until host gcc causes real problems.
