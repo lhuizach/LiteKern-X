@@ -171,6 +171,15 @@ check "touchpad: IRQ 12 packets decoded (direction, buttons, clamped at the edge
     '^mouse: \(1023, 0\) buttons ---$' \
     '!PANIC'
 
+KEYS="a b c d e f g h i j k l m home" KEYS_DONE="^kbd: key 0x026 'l'" \
+SCREEN="has=$TEXT@0,0,200,16 has=$TEXT@800,0,1024,16 has=$TEXT@0,16,100,32" \
+    boot_until build/litekernx.img "$done_re" 20
+check "scrollback: Home shows the start of the log with the indicator" \
+    "^screen: has $TEXT in 0,0,200,16: no$" \
+    "^screen: has $TEXT in 800,0,1024,16: yes$" \
+    "^screen: has $TEXT in 0,16,100,32: yes$" \
+    '!kbd: key 0x147'
+
 boot_until build/test-drivers/litekernx.img "$selftest_done_re" 20
 check "driver layer + display driver self-test" \
     '^dev pci 00:01\.1 driver=selftest-ide bound$' \

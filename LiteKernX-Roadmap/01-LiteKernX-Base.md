@@ -79,6 +79,8 @@ Each driver: implements full `driver_t` interface, tested in isolation, fails lo
 ---
 
 ## Phase 1 Done Criteria
+All of Phase 1's code is done and tested in QEMU and VirtualBox (2026-09-27). The boxes below wait for the EeePC run in `docs/HARDWARE-TEST.md`, which covers every real-hardware check listed above in one session.
+
 - [ ] Kernel boots, reaches "ready" state, with per-phase timing logged (measured from bootloader entry)
 - [ ] PCI enumeration prints detected devices independent of any driver
 - [ ] Driver registry works — display, keyboard, and touchpad drivers registered and callable

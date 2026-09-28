@@ -30,7 +30,7 @@ KERNEL_OBJS := $(patsubst %.c,$(BUILD)/%.o,$(filter %.c,$(KERNEL_SRCS))) \
 USER_TEST_BINS := $(patsubst %.asm,$(BUILD)/%.user.bin,$(wildcard tests/kernel/user/*.asm))
 
 .PHONY: all run debug test test-boot test-kernel smoke smoke-gui check-tools clean \
-        vbox-create vbox vbox-test
+        vbox-create vbox vbox-test usb
 
 all: $(IMAGE)
 
@@ -103,6 +103,23 @@ test-boot:
 
 test-kernel:
 	@bash tests/kernel/test-kernel.sh
+
+# --- real hardware (docs/HARDWARE-TEST.md) ----------------------------------
+# The normal image and the ring 3 self-test image, padded to 1 MiB so USB
+# writing tools (Rufus, balenaEtcher) accept them.
+
+USB_TEST_FLAGS := BUILD=build/test-user EXTRA_CFLAGS=-DLKX_SELFTEST_USER \
+                  "EXTRA_KERNEL_SRCS=tests/kernel/selftest_user.c tests/kernel/user_programs.asm"
+
+usb: $(IMAGE)
+	@$(MAKE) -s $(USB_TEST_FLAGS) build/test-user/litekernx.img
+	@mkdir -p build/usb
+	@cp $(IMAGE) build/usb/litekernx.img
+	@cp build/test-user/litekernx.img build/usb/litekernx-ring3-test.img
+	@truncate -s 1M build/usb/litekernx.img build/usb/litekernx-ring3-test.img
+	@echo "USB images (write one at a time; see docs/HARDWARE-TEST.md):"
+	@echo "  build/usb/litekernx.img             normal boot"
+	@echo "  build/usb/litekernx-ring3-test.img  ring 3 self-test"
 
 # --- VirtualBox VM (vm/vbox.sh) ---------------------------------------------
 # Not part of `make test`: it needs the Windows VirtualBox install.

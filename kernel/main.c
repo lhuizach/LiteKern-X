@@ -55,9 +55,23 @@ static const struct boot_info *keep_boot_info(uint32_t magic, const struct boot_
  * yet (Phase 2 brings the cursor, GUI and apps). */
 #define MOUSE_LOG_MS 100    /* movement is logged at most this often */
 
+/* PgUp/PgDn/Home/End scroll the on-screen log (on the EeePC: Fn + arrows)
+ * instead of being logged. */
+static int console_key(const struct key_event *ev)
+{
+    int page = (int)console_rows() - 1;
+    switch (ev->key) {
+    case KEY_PAGEUP:   if (ev->pressed) console_scroll(page);    return 1;
+    case KEY_PAGEDOWN: if (ev->pressed) console_scroll(-page);   return 1;
+    case KEY_HOME:     if (ev->pressed) console_scroll(100000);  return 1;
+    case KEY_END:      if (ev->pressed) console_scroll(-100000); return 1;
+    }
+    return 0;
+}
+
 static void log_key(const struct key_event *ev)
 {
-    if (!ev->pressed)
+    if (console_key(ev) || !ev->pressed)
         return;
     kprintf("kbd: key 0x%03x", ev->key);
     if (ev->ascii >= 0x20 && ev->ascii < 0x7f)
@@ -85,7 +99,7 @@ static void __attribute__((noreturn)) idle(const struct boot_info *bi)
     uint32_t last_log = 0;
 
     if (kbd && kbd->state == DEVICE_BOUND)
-        kprintf("kbd: ready; key presses are logged below\n");
+        kprintf("kbd: ready; key presses are logged below (PgUp/PgDn/Home/End scroll the log)\n");
     if (mouse && mouse->state == DEVICE_BOUND) {
         kprintf("mouse: ready; pointer starts at the centre, movement and buttons logged below\n");
         log_pointer(x, y, buttons);

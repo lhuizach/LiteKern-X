@@ -2,12 +2,12 @@
 
 A from-scratch 32-bit x86 OS for the ASUS EeePC 1000HE (Intel Atom N270). It's a clean-slate rewrite of LiteKern v1 that keeps the KERN86 app model (`.lkx`, `kerns.json`, `kern86.h`).
 
-**Status:** Phase 1, sections 1–5 plus the display, keyboard and touchpad drivers (§6.1–6.3) are done in the VMs. The bootloader is stage 1 + stage 2. The C kernel:
+**Status:** all of Phase 1's code is done and tested in QEMU and VirtualBox. Next is the run on the real EeePC ([docs/HARDWARE-TEST.md](docs/HARDWARE-TEST.md), images from `wsl make usb`), which the Phase 1 Done Criteria need before Phase 2. The bootloader is stage 1 + stage 2. The C kernel:
 - sets up its GDT/IDT/TSS and calibrates the TSC
 - turns on paging: null pointers fault, kernel code is read-only, user space is 2–3 GiB
 - reports the memory map, display mode and every PCI device
 - binds drivers through a fixed driver interface: the COM1 UART, the VBE framebuffer display, and the PS/2 keyboard and touchpad (both interrupt-driven)
-- after boot, idles with interrupts on and logs key presses, clicks and pointer movement on screen
+- after boot, idles with interrupts on and logs key presses, clicks and pointer movement on screen. PgUp/PgDn/Home/End scroll back through the log (Fn + arrows on the EeePC).
 - shows its log on screen (so the EeePC, which has no serial port, can be debugged)
 - can run a program in ring 3 with `int 0x80` system calls; a fault in the program kills only the program
 - logs per-phase boot times and reaches "ready"
@@ -56,6 +56,7 @@ wsl make check-tools
 | `wsl make smoke` | Boots the smoke image headless and checks serial output + exit code |
 | `wsl make smoke-gui` | Same image in a QEMU window (shown through WSLg) |
 | `wsl make run` | Builds and boots `build/litekernx.img` in a window |
+| `wsl make usb` | Builds the two images for the real EeePC into `build/usb/` (see [docs/HARDWARE-TEST.md](docs/HARDWARE-TEST.md)) |
 | `wsl make debug` | Same as `run`, paused, with a gdb stub on `:1234`; interrupts and resets logged to `build/qemu-debug.log` |
 
 ### VirtualBox VM
