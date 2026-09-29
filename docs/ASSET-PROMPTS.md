@@ -1,43 +1,194 @@
-# LiteKern X — Asset Prompts (icons, cursors, UI glyphs)
+# LiteKern X — Asset Rules and Prompts (cursors, icons, UI glyphs)
 
-Prompts for generating LiteKern X's visual assets with an AI that **writes SVG code** (ChatGPT, Claude, Gemini, …).
+Two kinds of asset, made two ways:
 
-**Don't use image generators** (Midjourney, DALL·E, Stable Diffusion) for these. They produce blurry raster art, can't hit exact 16/24/32 px grids, and can't give you exact cursor hotspots.
+| Asset | Format | How you make it |
+|---|---|---|
+| **Cursors** (§3) | **PNG images**, 32×32 | A text AI types a pixel grid that `tools/cursor-grid2png.py` converts, or a pixel editor (Piskel, Aseprite, GIMP) |
+| Icons, UI glyphs, logo (§4–§6) | SVG | A text AI that writes SVG code (ChatGPT, Claude, Gemini), using the prompts below |
 
-**When these are used:** Phase 2 §2 needs the cursors. Phase 2 §4 (widgets) and Phase 3 §1 (the final icon/cursor set) need the rest. Generating them now is fine, because they're files, not features. Commit them under `assets/` so they're ready when those steps start.
+All of them are turned into bitmaps for the kernel **at build time**, by a script, so the kernel never parses PNG or SVG itself.
+
+**When these are used:** Phase 2 §2 needs the cursors. Phase 2 §4 (widgets) and Phase 3 §1 (the final icon/cursor set) need the rest. Make them whenever you like and commit them under `assets/`.
 
 ---
-
-## How to use this
-1. Start a new chat and paste the **Rules block** (§1) first.
-2. Then paste **one** asset prompt from §3–§6 per message. Asking for one file at a time gives much better results than asking for a whole set.
-3. Save each answer as the file name the prompt asks for, under `assets/`.
-4. Check each file against the **Review checklist** (§7) before committing it. If one fails, reply to the AI with the rule it broke.
 
 ## Where the files go
 ```
 assets/
-  cursors/      arrow.svg, hand.svg, text.svg, wait-0..3.svg, move.svg, not-allowed.svg,
-                resize-h.svg, resize-v.svg, resize-d1.svg, resize-d2.svg
+  cursors/      arrow.png, hand.png, text.png, wait-0..3.png, move.png, not-allowed.png,
+                resize-h.png, resize-v.png, resize-d1.png, resize-d2.png
+  cursors.json  hotspots and animation (see §3.4)
   icons/apps/   <app>.svg            one 48x48 master per app
   icons/ui/     close.svg, minimise.svg, check.svg, ... (16x16)
-  cursors.json  hotspots and animation (see §3.3)
-  palette.md    copy of §2, the only colours allowed
+  logo.svg      optional, 128x128
 ```
+**File names:** lowercase letters, digits and hyphens only (`resize-d1.png`, `text-editor.svg`).
 
 ---
 
-## 1. Rules block (paste this first in every new chat)
+## 1. The palette (every asset)
+Use **only** these 8 colours, plus transparency:
+
+| Hex | Name | Use |
+|---|---|---|
+| `#0F1E33` | ink | Outlines, darkest detail |
+| `#1E3A5F` | navy | System background colour, main dark fill |
+| `#2E5584` | steel | Secondary dark fill, shading |
+| `#48A6E8` | sky | Accent (the LiteKern blue): highlights, active state |
+| `#C8D0DC` | mist | Light fill, text colour on navy |
+| `#FFFFFF` | white | Cursor fill, brightest highlight |
+| `#E8A33D` | amber | Warnings. At most one warm accent per asset. |
+| `#B83232` | red | Errors, the close button, destructive actions only |
+
+- **Cursors are the exception:** they use pure black `#000000` and white `#FFFFFF` (§3.1), plus half-transparent versions of those two along curved edges.
+- The screen is the EeePC 1000HE's: 1024×600, 8.9" (about 133 dpi), 32-bit colour. Assets are drawn **1:1, never scaled**, so what you see at 100% zoom is exactly what appears on screen.
+
+---
+
+## 2. Sizes and formats at a glance
+
+| Asset | Canvas (px) | File | Notes |
+|---|---|---|---|
+| Cursors | **32×32** | `assets/cursors/<name>.png` | RGBA PNG. The visible shape is about 20–24 px tall. Hotspot goes in `cursors.json`. |
+| Busy cursor | 32×32 × 4 frames | `assets/cursors/wait-0.png` … `wait-3.png` | Played at 150 ms per frame |
+| App icons | 48×48 master | `assets/icons/apps/<app>.svg` | Also used at 32 and 16. Hand-tune a 16×16 if the small one looks muddy (§4.3). |
+| UI glyphs | 16×16 | `assets/icons/ui/<name>.svg` | Title-bar buttons, checkboxes and similar |
+| Logo (optional) | 128×128 | `assets/logo.svg` | For the Phase 4 website. It is **not** a boot splash, since the boot budget is ≤1000 ms. |
+
+---
+
+## 3. Cursors (PNG images)
+
+### 3.1 Rules
+| Rule | Why |
+|---|---|
+| **PNG, 32-bit RGBA** (8 bits per channel plus alpha), with a **transparent background** | The kernel blends each pixel using its alpha |
+| **Exactly 32×32 px**. The visible shape is 20–24 px tall; everything else is fully transparent (alpha 0). | Drawn 1:1. Anything larger is refused by the build. |
+| **Draw it at 1×, pixel by pixel**, at 32×32. Don't draw it big and shrink it. | Shrinking makes a small cursor blurry and muddy |
+| **Black body `#000000` with a white `#FFFFFF` edge, 1 px wide, all the way round** (decided 2026-09-29) | Visible on navy, on white (thanks to the black body) and on sky blue |
+| **Rounded:** soft corners and curves instead of sharp points. The tip keeps a clear single hotspot pixel. | The LiteKern X look |
+| Edge pixels: **fully opaque** (alpha 255). Optionally, a few **half-transparent pixels** (alpha about 64–192) on the *outside* of curves, to smooth them. | Smooth edges without a blurry shape |
+| **No drop shadows, glows, gradients or textures** | They look muddy at this size and cost drawing time |
+| Only black `#000000`, white `#FFFFFF`, **greys between them where black meets white on a curve** (smoothing), and the §1 colours for the few cursors in §3.3 that use sky or red | One look across the whole system |
+| **Hotspot:** the one pixel that "clicks". It must be an opaque pixel of the tip, or the centre of a symmetric cursor. | Goes in `cursors.json` (§3.4) |
+| Frames of an animation (`wait-*`) are **identical except for the part that animates** | So it doesn't jitter |
+| Save **without colour profiles or metadata** (in GIMP: Export → untick "Save color profile") | Keeps the build conversion exact |
+
+### 3.2 How to make one
+
+**Option A: a text AI types it as a grid (easiest).** Paste the prompt below into ChatGPT or Claude, save the whole answer as a text file, then convert it:
+```
+wsl python3 tools/cursor-grid2png.py arrow-grid.txt assets/cursors/arrow.png
+```
+The script checks the size, the characters and the hotspot, and prints the `cursors.json` entry. Open the PNG to look at it. If it's not right, ask the AI to fix specific rows ("row 12 is too wide on the right"), then convert again.
 
 ```text
-You are designing icons and cursors for LiteKern X, a small from-scratch operating system
-for a 2008 netbook (ASUS EeePC 1000HE: 1024x600 screen, 8.9" (~133 dpi), 32-bit colour,
-Intel Atom CPU, no GPU acceleration). Everything you make will be rasterised to small
-bitmaps, so crispness at 1x matters more than detail.
+Draw a mouse cursor for a small operating system as a 32x32 pixel grid.
+
+OUTPUT FORMAT (exactly this, nothing else):
+- 32 lines, each exactly 32 characters, inside one ``` code block. Row 0 is the top,
+  column 0 is the left.
+- Characters: "." transparent, "K" black body, "W" white edge, "w" half-transparent white
+  (only on the outside of curves, to smooth them), "k" half-transparent black (only where a
+  curve of the body needs smoothing).
+- After the code block, one line: hotspot: X,Y
+
+DESIGN
+- The default pointer: a classic arrow pointing up and to the left, with a short tail
+  angled down and to the right. About 21 pixels tall and 14 wide. The tip sits near the
+  top-left corner of the grid (around column 1, row 1).
+- ROUNDED: soft corners everywhere. The tail's end is rounded, the notch where the tail
+  meets the head is a smooth curve, and the two outer corners of the arrowhead are rounded.
+  The tip is slightly softened but still comes to a clear point.
+- A black body ("K") with a white edge ("W") exactly 1 pixel wide all the way round.
+  Every black pixel touching the transparent area must have a white pixel between it and
+  the transparent area. The edge never has gaps.
+- Symmetric-looking and smooth: each row's width changes gradually, with no jagged steps.
+- Nothing else in the grid: no shadow, no glow, no text.
+- The hotspot is the tip: the top-left-most opaque pixel of the arrow. It must be "K" or "W".
+
+Check before answering: exactly 32 rows of exactly 32 characters, only the characters
+. K W w k, a continuous white edge, and a hotspot that is on an opaque pixel.
+```
+
+**Option B: draw it yourself (Piskel, free in the browser).**
+1. Go to [piskelapp.com](https://www.piskelapp.com), click Create Sprite, then **Resize** the canvas to **32 × 32**.
+2. Add black `#000000` and white `#FFFFFF` to the palette (plus `#48A6E8` or `#B83232` where needed).
+3. Draw with the **pen at size 1**: the white edge first, then fill the body black. Leave everything else transparent.
+4. Check it in the preview at **1×** (the small preview, not the zoomed canvas). That's its real size.
+5. **Export → PNG** at scale 1 and save as `assets/cursors/<name>.png`.
+6. Note the hotspot: hover over the tip pixel and read the x, y coordinates Piskel shows at the bottom. Put them in `cursors.json`.
+
+GIMP or Aseprite work the same way: a 32×32 canvas, the pencil tool (not the brush, which is anti-aliased), and export as PNG.
+
+### 3.3 The set
+
+| File | What to draw | Hotspot |
+|---|---|---|
+| `arrow.png` | The default pointer: a classic arrow leaning left and pointing to the top-left, with a short tail, about 21 px tall. The tip sits at the top-left of the shape. | The tip, e.g. 1,1 |
+| `hand.png` | Over a link or button: a hand with the index finger pointing straight up and the other fingers folded, about 22 px tall | The fingertip |
+| `text.png` | Over text: an I-beam, a 1 px vertical bar about 17 px tall with 5 px serifs at the top and bottom | The centre of the bar |
+| `wait-0.png` … `wait-3.png` | Busy: **the arrow** plus a small ring about 9×9 beside its bottom-right, made of 4 segments. In frame N, segment N is sky `#48A6E8` and the others are mist `#C8D0DC`. The arrow is pixel-identical in all 4. | Same as the arrow |
+| `move.png` | Moving something: a plus shape with an arrowhead on each of its 4 ends, about 21×21, centred | The centre, 16,16 |
+| `not-allowed.png` | Not allowed: the arrow plus a small circle (about 10×10) with a diagonal bar at its bottom-right, in red `#B83232` with an ink outline | Same as the arrow |
+| `resize-h.png` | Resizing sideways: a double-headed arrow pointing left and right, about 21 px wide, centred | 16,16 |
+| `resize-v.png` | Resizing up and down: a double-headed arrow, about 21 px tall, centred | 16,16 |
+| `resize-d1.png` | Diagonal resize, top-left to bottom-right, centred | 16,16 |
+| `resize-d2.png` | Diagonal resize, top-right to bottom-left. The mirror of `resize-d1`. | 16,16 |
+
+**Start with `arrow.png`.** It's the only one Phase 2 needs straight away. The others can come later.
+
+### 3.4 `assets/cursors.json`
+This one is **JSON**, in the same spirit as `kerns.json`. Put the hotspot you noted for each file here:
+```json
+{
+  "version": 1,
+  "size": 32,
+  "cursors": {
+    "arrow":       { "file": "arrow.png",       "hotspot": [1, 1] },
+    "hand":        { "file": "hand.png",        "hotspot": [10, 1] },
+    "text":        { "file": "text.png",        "hotspot": [16, 16] },
+    "wait":        { "frames": ["wait-0.png", "wait-1.png", "wait-2.png", "wait-3.png"],
+                     "frame_ms": 150, "hotspot": [1, 1] },
+    "move":        { "file": "move.png",        "hotspot": [16, 16] },
+    "not-allowed": { "file": "not-allowed.png", "hotspot": [1, 1] },
+    "resize-h":    { "file": "resize-h.png",    "hotspot": [16, 16] },
+    "resize-v":    { "file": "resize-v.png",    "hotspot": [16, 16] },
+    "resize-d1":   { "file": "resize-d1.png",   "hotspot": [16, 16] },
+    "resize-d2":   { "file": "resize-d2.png",   "hotspot": [16, 16] }
+  }
+}
+```
+- Hotspots are whole numbers from 0 to 31. Only list cursors whose files exist; you can start with just `"arrow"`.
+- The values above are placeholders. Replace each with the pixel you actually read off your image.
+
+### 3.5 Checklist before committing a cursor
+Run the checker first. It tests most of this list and writes a preview of the cursor on navy, white and sky, at 1× and 8×:
+```
+wsl python3 tools/cursor-check.py assets/cursors/arrow.png build/arrow-preview.png
+```
+- [ ] 32×32 px, PNG, with transparency (the background shows as a checkerboard in the editor)
+- [ ] It looks right at **100% zoom**, which is its real size, not only when zoomed in
+- [ ] It has a black body with a 1 px white edge all the way round, rounded corners, and no shadow or glow
+- [ ] It's still visible when placed on navy `#1E3A5F`, white, and sky `#48A6E8`
+- [ ] The hotspot in `cursors.json` is an opaque pixel on the tip or centre
+
+---
+
+## 4. App icons (SVG, made with a text AI)
+
+### 4.0 Rules block (paste this first in every new chat for §4–§6)
+
+```text
+You are designing icons for LiteKern X, a small from-scratch operating system for a 2008
+netbook (ASUS EeePC 1000HE: 1024x600 screen, 8.9" (~133 dpi), 32-bit colour, Intel Atom
+CPU, no GPU acceleration). Everything you make will be rasterised to small bitmaps, so
+crispness at 1x matters more than detail.
 
 OUTPUT LANGUAGE AND FORMAT
 - Output exactly one SVG file per answer, in a single ```svg code block, nothing else in
-  the block. After the block, one line saying the hotspot (cursors only) and nothing more.
+  the block.
 - SVG 1.1, UTF-8. Root element: <svg xmlns="http://www.w3.org/2000/svg" width="W"
   height="H" viewBox="0 0 W H">. W and H are exactly the size I ask for.
 - Allowed elements: <svg>, <g>, <path>, <rect>, <circle>, <ellipse>, <polygon>, <polyline>,
@@ -50,111 +201,28 @@ OUTPUT LANGUAGE AND FORMAT
   fonts, <image>, embedded bitmaps, <style>/CSS, class/id-based styling, <use>/<defs>,
   scripts, animation elements, rotate/scale/skew/matrix transforms, currentColor, named
   colours. Colours are 6-digit hex only.
-- No comments, no metadata, no editor namespaces (inkscape:, sodipodi:). Keep the file
-  small and hand-readable.
+- No comments, no metadata, no editor namespaces (inkscape:, sodipodi:).
 
 PIXEL GRID RULES
-- Design on the pixel grid of the requested size. All rect/line/polygon coordinates are
-  whole numbers, or whole+0.5 for 1px strokes, so edges land on pixel boundaries.
-- Minimum stroke width 1px. Minimum gap between shapes 1px. Nothing thinner than 1px.
+- Design on the pixel grid of the requested size. All coordinates are whole numbers, or
+  whole+0.5 for 1px strokes, so edges land on pixel boundaries.
+- Minimum stroke width 1px. Minimum gap between shapes 1px.
 - Keep a 1px empty margin inside the canvas unless I say otherwise.
 - Simple, bold, geometric shapes. If a detail wouldn't survive at 16x16, leave it out.
 
 COLOURS — use ONLY these 8 colours (plus fully transparent background):
-  #0F1E33  ink        (outlines, darkest detail)
-  #1E3A5F  navy       (system background colour; main dark fill)
-  #2E5584  steel      (secondary dark fill, shading)
-  #48A6E8  sky        (accent, the LiteKern blue; highlights, active state)
-  #C8D0DC  mist       (light fill, text colour on navy)
-  #FFFFFF  white      (cursor fill, brightest highlight)
-  #E8A33D  amber      (warnings, one warm accent per icon at most)
-  #B83232  red        (errors, close button, destructive actions only)
-- No other colours, no opacity blends except 0.5 for a disabled state when I ask for one.
+  #0F1E33 ink, #1E3A5F navy, #2E5584 steel, #48A6E8 sky, #C8D0DC mist, #FFFFFF white,
+  #E8A33D amber (one warm accent per icon at most), #B83232 red (errors/close only).
 - The background of every file is transparent (no full-canvas rect).
 
 STYLE
-- Flat, geometric, friendly, "technical but warm". Think 2000s pixel-precise UI icons
-  redrawn flat: no skeuomorphism, no 3D, no photo realism, no gloss.
-- Light source is implied top-left: if you shade, the lighter tone is on the top/left.
-- Every icon must read clearly on BOTH the navy desktop (#1E3A5F) and a light window
-  (#C8D0DC): give light shapes an ink (#0F1E33) 1px outline where they touch the edge.
-- No letters or words inside icons (no "A" for a text editor, no "Settings" labels).
+- Flat, geometric, friendly, "technical but warm". No skeuomorphism, 3D, photo realism
+  or gloss. Implied light source top-left.
+- Every icon must read on BOTH the navy desktop (#1E3A5F) and a light window (#C8D0DC):
+  give light shapes a 1px ink (#0F1E33) outline where they touch the edge.
+- No letters or words inside icons.
 - Consistent family: same corner radius, same outline weight, same palette in every icon.
 ```
-
----
-
-## 2. Sizes, formats and naming at a glance
-
-| Asset | Canvas (px) | Master file | Notes |
-|---|---|---|---|
-| Cursors | 32×32 | `assets/cursors/<name>.svg` | Visible shape about 20–24 px tall. Hotspot recorded in `cursors.json`. |
-| Busy cursor | 32×32 × 4 frames | `assets/cursors/wait-0.svg` … `wait-3.svg` | Played at 150 ms per frame. |
-| App icons | 48×48 master | `assets/icons/apps/<app>.svg` | Also used downscaled to 32 and 16. Ask for a hand-tuned 16×16 if the downscale looks muddy (§4.3). |
-| UI glyphs | 16×16 | `assets/icons/ui/<name>.svg` | Title-bar buttons, checkboxes and similar |
-| Logo (optional) | 128×128 | `assets/logo.svg` | For the Phase 4 website. It is **not** a boot splash, because the boot budget is ≤1000 ms. |
-
-- **File names:** lowercase letters, digits and hyphens only (`resize-d1.svg`, `text-editor.svg`).
-- **Build-time conversion** (Phase 2): the build will rasterise these SVGs to 32-bit ARGB bitmaps for the kernel. The strict SVG subset in §1 keeps that simple, and keeps it compatible with the SVG cursor rasteriser being ported from v1.
-
-> ⚠ **Check this against v1 first.** v1 already had "SVG-spec cursors". If v1's rasteriser supports fewer features than §1 allows (for example no `A` arcs or no `C` curves), remove those from the Rules block before generating anything, so the new cursors stay compatible with the rasteriser being ported.
-
----
-
-## 3. Cursors
-
-### 3.1 Shared cursor rules (paste once, after the Rules block)
-```text
-CURSOR RULES (in addition to the rules above)
-- Canvas 32x32. The visible cursor is 20-24px tall; the rest is transparent.
-- Fill #FFFFFF with a 1px #0F1E33 outline on every edge, so it's visible on navy, on white
-  and on sky-blue. No other colours unless the prompt says so.
-- The hotspot (the exact pixel that "clicks") must be a real pixel of the shape's tip or
-  centre, given as integer x,y. State it after the code block as: hotspot: x,y
-- Shapes must be pixel-aligned with no anti-aliasing tricks. They must look sharp at 1x.
-```
-
-### 3.2 One prompt per cursor
-| File | Prompt (paste after the rules) | Expected hotspot |
-|---|---|---|
-| `arrow.svg` | Default pointer: a classic left-leaning arrow pointing to the top-left, with a short tail. The tip is at the top-left of the visible shape. Visible height 21px. | 1,1 (the tip) |
-| `hand.svg` | Link/button pointer: a hand with the index finger pointing straight up and the other fingers folded, drawn as simple rounded rectangles. The fingertip is the hotspot. Visible height 22px. | fingertip, about 10,1 |
-| `text.svg` | Text I-beam: a vertical bar 1px wide and 17px tall, with small serifs (5px wide) at the top and bottom. Ink outline. | centre of the bar, about 16,16 |
-| `wait-0.svg` … `wait-3.svg` | Busy cursor, 4 animation frames. The **arrow from arrow.svg**, plus a small 9×9 ring beside its bottom-right made of 4 segments. In frame N, segment N is sky #48A6E8 and the others are mist #C8D0DC. The arrow must be pixel-identical in all 4 frames. Output one frame per answer, starting with frame 0. | same as arrow |
-| `move.svg` | Move: a plus shape with an arrowhead on each of its 4 ends, 21×21, centred. | 16,16 |
-| `not-allowed.svg` | Not allowed: the arrow plus a small 10×10 circle with a diagonal bar at its bottom-right, in red #B83232 with a 1px ink outline. | same as arrow |
-| `resize-h.svg` | Horizontal resize: a double-headed arrow pointing left and right, 21px wide, centred. | 16,16 |
-| `resize-v.svg` | Vertical resize: a double-headed arrow pointing up and down, 21px tall, centred. | 16,16 |
-| `resize-d1.svg` | Diagonal resize from top-left to bottom-right: a double-headed arrow, centred. | 16,16 |
-| `resize-d2.svg` | Diagonal resize from top-right to bottom-left: a double-headed arrow, centred. Mirror of resize-d1. | 16,16 |
-
-### 3.3 `assets/cursors.json` (write this yourself, or ask the AI to fill it in from its hotspot lines)
-The **language here is JSON**, in the same spirit as `kerns.json`:
-```json
-{
-  "version": 1,
-  "size": 32,
-  "cursors": {
-    "arrow":       { "file": "arrow.svg",       "hotspot": [1, 1] },
-    "hand":        { "file": "hand.svg",        "hotspot": [10, 1] },
-    "text":        { "file": "text.svg",        "hotspot": [16, 16] },
-    "wait":        { "frames": ["wait-0.svg", "wait-1.svg", "wait-2.svg", "wait-3.svg"],
-                     "frame_ms": 150, "hotspot": [1, 1] },
-    "move":        { "file": "move.svg",        "hotspot": [16, 16] },
-    "not-allowed": { "file": "not-allowed.svg", "hotspot": [1, 1] },
-    "resize-h":    { "file": "resize-h.svg",    "hotspot": [16, 16] },
-    "resize-v":    { "file": "resize-v.svg",    "hotspot": [16, 16] },
-    "resize-d1":   { "file": "resize-d1.svg",   "hotspot": [16, 16] },
-    "resize-d2":   { "file": "resize-d2.svg",   "hotspot": [16, 16] }
-  }
-}
-```
-- **Rules:** hotspots are integers inside `0..size-1`, every file named must exist, and there are no extra keys.
-- Replace each placeholder hotspot with the one the AI reported, after checking it on the actual shape.
-
----
-
-## 4. App icons
 
 ### 4.1 Shared app-icon rules (paste once, after the Rules block)
 ```text
@@ -171,7 +239,7 @@ APP ICON RULES (in addition to the rules above)
 ```
 
 ### 4.2 Per-app prompts
-Phase 3 calls for **1–3 finished apps**, and which apps is still open. Use the ones you pick, and keep the others for later. These are all plausible for a no-network, read-only-ramdisk OS:
+Phase 3 calls for **1–3 finished apps**, and which apps is still open. These all suit a no-network OS with a read-only ramdisk:
 
 | File | Symbol prompt (paste after the app-icon rules) |
 |---|---|
@@ -191,7 +259,7 @@ Make assets/icons/apps/<name>.svg: an app icon for <what the app does, in one se
 Symbol: <1-3 simple shapes and their colours>. Accent colour: <sky or amber>.
 ```
 
-### 4.3 Hand-tuned 16×16 version (only if the downscale looks muddy)
+### 4.3 Hand-tuned 16×16 version (only if the small one looks muddy)
 ```text
 [Rules block first]
 Redraw this 48x48 app icon as a 16x16 icon for a taskbar: <paste the 48x48 SVG>.
@@ -201,10 +269,10 @@ to at most 2 shapes; every shape at least 2px wide. Save as <name>-16.svg.
 
 ---
 
-## 5. UI glyphs (title bar and widgets)
+## 5. UI glyphs (SVG, title bar and widgets)
 
 ```text
-UI GLYPH RULES (in addition to the rules above)
+UI GLYPH RULES (in addition to the Rules block)
 - Canvas 16x16, 1px transparent margin. Strokes exactly 1px or 2px, with square caps.
 - Default colour mist #C8D0DC (for use on navy). Only close-hover uses red #B83232.
 - Each glyph is centred optically and symmetric where the shape allows.
@@ -223,11 +291,11 @@ UI GLYPH RULES (in addition to the rules above)
 | `error.svg` | Error: a red circle with a white 2px "×". |
 | `busy-dot.svg` | A 6×6 sky circle, used for small progress indicators. |
 
-Disabled state: don't generate separate files. The renderer draws any glyph at 50% opacity.
+Disabled state: don't make separate files. The renderer draws any glyph at 50% opacity.
 
 ---
 
-## 6. Logo (optional, for the Phase 4 website)
+## 6. Logo (optional, SVG, for the Phase 4 website)
 ```text
 [Rules block first]
 Make assets/logo.svg, 128x128: the LiteKern X logo. A navy (#1E3A5F) rounded square
@@ -240,14 +308,15 @@ Nothing else: no wordmark, no text, no shadows.
 
 ---
 
-## 7. Review checklist (before committing any asset)
+## 7. Review checklist for SVG assets (§4–§6)
 - [ ] It opens in a browser and shows the expected shape. Check it at **100% zoom**, not zoomed in.
 - [ ] `width`, `height` and `viewBox` match the required size exactly.
-- [ ] It contains none of: `<text>`, `<image>`, `<style>`, `gradient`, `filter`, `mask`, `clipPath`, `<use>`, `<defs>`, `rotate(`, `scale(`, `matrix(`. Quick check from PowerShell in the repo:
+- [ ] It contains none of: `<text>`, `<image>`, `<style>`, `gradient`, `filter`, `mask`, `clipPath`, `<use>`, `<defs>`, `rotate(`, `scale(`, `matrix(`. A quick check from PowerShell in the repo:
   ```
-  wsl grep -nE "text|image|style|gradient|filter|mask|clipPath|<use|<defs|rotate\(|scale\(|matrix\(" assets -r
+  wsl grep -nE "<text|<image|<style|gradient|filter|mask|clipPath|<use|<defs|rotate\(|scale\(|matrix\(" -r assets --include=*.svg
   ```
-- [ ] Every colour is one of the 8 hex codes in §1 (search for `#` and compare).
-- [ ] It reads on **both** navy `#1E3A5F` and light `#C8D0DC`. Drop it into a page with each background colour to check.
-- [ ] Cursors: the reported hotspot is actually on the tip or centre, and it's in `cursors.json`.
+- [ ] Every colour is one of the 8 hex codes in §1.
+- [ ] It reads on **both** navy `#1E3A5F` and light `#C8D0DC`.
 - [ ] Family check: put every app icon side by side at 48 px and at 16 px. Same base, same radius, same weight.
+
+Cursors have their own checklist in §3.5.
