@@ -28,7 +28,7 @@ Stage 2 runs these steps in order:
 2. Read the E820 memory map (at most 32 entries).
 3. Enable A20. It tries three things in turn: checking whether A20 is already on, then BIOS `int 15h AX=2401`, then port `0x92`. Then it asks the video BIOS where its 8×16 font is.
 4. Read the kernel header, validate it, then read the whole image into the bounce buffer at `0x10000` in 64-sector (32 KiB) chunks.
-5. Set the VBE mode.
+5. On an Intel 945 (or Q35/G33) whose video BIOS has the Intel mode table, rewrite mode `0x5c` (1920×1440, which the EeePC's panel can't show) to 1024×600 in shadow RAM, as the Linux tool `915resolution` does. Stage 2 unlocks PAM1/PAM2, patches, reads the result back and restores PAM. The result goes in `BI_FLAG_VBIOS_PATCHED`, or `BI_FLAG_VBIOS_PATCH_FAILED` if the write didn't stick. Then it sets the VBE mode.
 6. Switch to 32-bit protected mode, copy the kernel to its load address, and zero its bss.
 
 **Kernel header** (`struct kernel_header`, the first 24 bytes of the image):

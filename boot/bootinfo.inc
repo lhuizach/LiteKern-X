@@ -19,6 +19,8 @@ KERNEL_VERSION      equ 1
 ; bi.flags
 BI_FLAG_FB              equ 1 << 0  ; framebuffer fields valid
 BI_FLAG_MMAP_TRUNCATED  equ 1 << 1  ; BIOS reported more than BOOT_MMAP_MAX entries
+BI_FLAG_VBIOS_PATCHED   equ 1 << 2  ; Intel video BIOS mode 0x5c rewritten to 1024x600
+BI_FLAG_VBIOS_PATCH_FAILED equ 1 << 3 ; tried, but the write didn't stick (shadow RAM locked)
 
 ; bi.tsc[] indices
 TSC_STAGE1          equ 0   ; T0: stage 1 entry

@@ -26,6 +26,17 @@ make -s BUILD=build/test-kernel-null EXTRA_CFLAGS=-DLKX_SELFTEST_KERNEL_NULL \
     build/test-kernel-null/litekernx.img >/dev/null || exit 1
 make -s BUILD=build/test-kernel-wp EXTRA_CFLAGS=-DLKX_SELFTEST_KERNEL_WP \
     build/test-kernel-wp/litekernx.img >/dev/null || exit 1
+make -s BUILD=build/diag-vbios EXTRA_CFLAGS=-DLKX_DIAG_VBIOS build/diag-vbios/litekernx.img \
+    >/dev/null || exit 1
+
+# The 1024x600 video BIOS patch, tested on QEMU's q35 (945-style PAM registers)
+# with a video BIOS carrying the EeePC's Intel mode table. SeaBIOS on q35
+# boots through AHCI, which won't read a disk image this small: pad it.
+mkdir -p build/test-boot
+python3 tests/boot/make-fake-intel-vbios.py /usr/share/seabios/vgabios-stdvga.bin \
+    build/test-boot/fake-intel-vgabios.bin >/dev/null || exit 1
+cp build/diag-vbios/litekernx.img build/test-boot/diag-1m.img
+truncate -s 1M build/test-boot/diag-1m.img
 
 # boot_until IMAGE REGEX SECONDS [EXTRA QEMU ARGS] -> $out holds the serial output
 # Once REGEX matches:
@@ -115,7 +126,8 @@ check "reports the BIOS memory map and display mode" \
     '^mem 0x0000000000100000-0x[0-9a-f]{16} usable$' \
     '^mem: 10[0-9]{2} MiB usable in [0-9]+ regions$' \
     '^fb 1024x768x32 pitch=4096 at 0x[0-9a-f]{8}$' \
-    "^vbe: VBE 3\.0, 'SeaBIOS VBE\(C\) 2011', 16384 KiB, [0-9]+ modes seen; 32 bpp LFB:.* 800x600 1024x768"
+    "^vbe: VBE 3\.0, 'SeaBIOS VBE\(C\) 2011', 16384 KiB, [0-9]+ modes seen; 32 bpp LFB:.* 800x600 1024x768" \
+    '!vbe: patched|vbe: WARNING'
 
 check "turns on paging with the planned layout" \
     '^mm: paging on; null page unmapped; kernel code read-only 0x00100000-0x[0-9a-f]{8}$' \
@@ -141,6 +153,17 @@ check "shows the boot log on screen (navy = ready)" \
     '^console: 128x48 characters, video BIOS font at 0x[0-9a-f]{5}$' \
     "^screen: corner $NAVY$" \
     "^screen: has $TEXT in 0,16,100,32: yes$"
+
+QEMU_MACHINE=q35 boot_until build/test-boot/diag-1m.img "$done_re" 20 \
+    -vga none -device VGA,romfile=build/test-boot/fake-intel-vgabios.bin
+check "patches an Intel video BIOS mode table to 1024x600 (q35, EeePC table)" \
+    '^vbe: patched the Intel video BIOS: mode 0x5c is now 1024x600 \(panel native\)$' \
+    '^ 30/8/9a1a/00  32/8/9a34/00  34/8/9a4e/00  3c/8/9a68/00  5c/32/9a68/00$' \
+    '^res \+9a68: 68 5b 00 a8 42 58 3c 20 ' \
+    '^    t1 1024x600 ' \
+    '^    t1 800x600 ' \
+    '^diag: host 8086:29c0 pam 90-96 = 10 11 11 ' \
+    '!vbe: WARNING|PANIC'
 
 KEYS="a shift-a caps_lock b caps_lock 1 shift-1 ret up left ctrl-c esc backspace" \
 KEYS_DONE='^kbd: key 0x00e ascii 0x08' \

@@ -26,6 +26,11 @@ void vbe_report(const struct boot_info *bi)
         if (m[i].bpp == 32 && m[i].model == 6 && (m[i].attributes & ATTR_WANTED) == ATTR_WANTED)
             kprintf(" %ux%u", m[i].width, m[i].height);
     kprintf("\n");
+    if (bi->flags & BI_FLAG_VBIOS_PATCHED)
+        kprintf("vbe: patched the Intel video BIOS: mode 0x5c is now 1024x600 (panel native)\n");
+    if (bi->flags & BI_FLAG_VBIOS_PATCH_FAILED)
+        kprintf("vbe: WARNING: could not patch the Intel video BIOS (shadow RAM stayed "
+                "read-only); running at the best standard mode instead\n");
 }
 
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }

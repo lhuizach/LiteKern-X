@@ -18,6 +18,8 @@
 
 #define BI_FLAG_FB             (1u << 0)
 #define BI_FLAG_MMAP_TRUNCATED (1u << 1)
+#define BI_FLAG_VBIOS_PATCHED  (1u << 2)    /* Intel video BIOS mode 0x5c rewritten to 1024x600 */
+#define BI_FLAG_VBIOS_PATCH_FAILED (1u << 3) /* tried, but the write didn't stick */
 
 enum {
     TSC_STAGE1,         /* T0: stage 1 entry */

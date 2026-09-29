@@ -49,7 +49,7 @@ mkdir -p build
 
 args=(
     -name "LiteKern X (EeePC 1000HE profile)"
-    -machine pc
+    -machine "${QEMU_MACHINE:-pc}"      # tests use q35 for its 945-style PAM registers
     -cpu n270
     -smp 1
     -m 1G

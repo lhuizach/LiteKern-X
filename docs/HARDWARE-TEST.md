@@ -59,6 +59,17 @@ Write it to the stick, boot it, then press **End** and **PgUp** until you reach 
 | `diag: host ... pam 90-96 = ...` | Whether the BIOS copy in RAM can be written (the patch needs that) |
 | `diag: mode table at +....` and the `res +....` lines | The Intel table to patch, and the timing record for each resolution |
 
+### D. The 1024×600 fix (`litekernx.img`, rebuilt after the diagnostic)
+Boot the normal image again. Pass means:
+| Line | Expected |
+|---|---|
+| `vbe: patched the Intel video BIOS: mode 0x5c is now 1024x600 (panel native)` | Present |
+| `fb ...` | `fb 1024x600x32 ...` |
+| `console: ...` | `128x37 characters`. The text should look sharp and **not stretched**. |
+| Screen | Navy, with the text filling the whole panel width |
+
+If you instead see `vbe: WARNING: could not patch ...`, the shadow RAM stayed locked: photograph the log. If the screen stays black, write `litekernx-vbios-diag.img` again and photograph the `diag:` lines, which now show the patched record too.
+
 ## 5. Send back
 The photos (or just the answers to the table). I'll tick the roadmap boxes, fill in the measurements table in `docs/BOOT-BUDGET.md`, and fix anything the real hardware disagrees with before Phase 2.
 

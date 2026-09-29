@@ -64,6 +64,7 @@ entry:
     call load_kernel
     mov bx, TSC_KERNEL_LOADED
     call mark_tsc
+    call patch_intel_vbios
     call set_vbe_mode
     mov bx, TSC_VBE_DONE
     call mark_tsc
@@ -290,6 +291,137 @@ read_sectors:
 .fail:
     mov si, msg_read
     jmp fail
+
+; --- 5a. 1024x600 on the GMA 950 --------------------------------------------
+;
+; The EeePC's Intel video BIOS has no mode for its own 1024x600 panel. Like the
+; Linux tool 915resolution, rewrite one mode it can never show on that panel
+; (internal mode 0x5c, 1920x1440 x 32 bpp, whose record 0x3c/0x4d share) to
+; 1024x600 in the BIOS's shadow-RAM copy, before the mode walk. The BIOS's
+; panel fitter supplies the real timings, so only width/height change.
+;
+; Runs only when all of these hold, else does nothing:
+;   - the host bridge is an Intel 945GM/GSE (or Q35/G33: same PAM registers)
+;   - the video BIOS has the Intel mode table (entries 0x30, 0x32, 0x34 ...)
+;   - mode 0x5c exists at 32 bpp and its record is wider than 1024 (unused)
+; Shadow RAM is unlocked through PAM1/PAM2, patched, read back, and the PAM
+; registers restored. Outcome recorded in bi.flags.
+
+PATCH_MODE      equ 0x5c
+PATCH_WIDTH     equ 1024
+PATCH_HEIGHT    equ 600
+PAM_ADDRESS     equ 0x80000090          ; host bridge 00:00.0, PAM0-PAM3
+PAM_RW          equ 0x33                ; both halves: reads and writes go to RAM
+
+patch_intel_vbios:
+    mov eax, 0x80000000                 ; host bridge vendor/device
+    mov dx, 0xcf8
+    out dx, eax
+    mov dx, 0xcfc
+    in eax, dx
+    cmp eax, 0x27ac8086                 ; 945GSE/GME (the EeePC 1000HE)
+    je .chipset_ok
+    cmp eax, 0x27a08086                 ; 945GM
+    je .chipset_ok
+    cmp eax, 0x29c08086                 ; Q35/G33 (same PAM layout; QEMU q35 for tests)
+    jne .skip
+.chipset_ok:
+    push es
+    mov ax, 0xc000
+    mov es, ax
+    cmp word [es:0], 0xaa55             ; option ROM signature
+    jne .done
+    movzx cx, byte [es:2]               ; ROM size in 512-byte blocks
+    shl cx, 9
+    jnz .limit_ok
+    mov cx, 0xfff0                      ; 128 blocks = 64 KiB wraps to 0
+.limit_ok:
+    sub cx, 16
+    xor di, di
+.search:
+    cmp byte [es:di], 0x30
+    jne .next_byte
+    cmp byte [es:di + 5], 0x32
+    jne .next_byte
+    cmp byte [es:di + 10], 0x34
+    je .found
+.next_byte:
+    inc di
+    cmp di, cx
+    jb .search
+    jmp .done
+
+.found:
+    mov cx, 64                          ; entries to look at, at most
+.entry:
+    mov al, [es:di]
+    cmp al, 0xff                        ; end of table
+    je .done
+    cmp al, PATCH_MODE
+    jne .next_entry
+    cmp byte [es:di + 1], 32
+    je .got_mode
+.next_entry:
+    add di, 5
+    loop .entry
+    jmp .done
+
+.got_mode:
+    mov bx, [es:di + 2]                 ; offset of its resolution record
+    movzx ax, byte [es:bx + 4]          ; width = (x2 & 0xf0) << 4 | x1
+    and al, 0xf0
+    shl ax, 4
+    or al, [es:bx + 2]
+    cmp ax, PATCH_WIDTH
+    jbe .done                           ; already usable (or already patched): leave it
+
+    mov eax, PAM_ADDRESS                ; save PAM1 (0x91) and PAM2 (0x92), unlock
+    mov dx, 0xcf8
+    out dx, eax
+    mov dx, 0xcfd
+    in al, dx
+    mov [saved_pam1], al
+    mov al, PAM_RW
+    out dx, al
+    mov dx, 0xcfe
+    in al, dx
+    mov [saved_pam2], al
+    mov al, PAM_RW
+    out dx, al
+
+    mov byte [es:bx + 2], PATCH_WIDTH & 0xff
+    mov al, [es:bx + 4]
+    and al, 0x0f
+    or al, (PATCH_WIDTH >> 4) & 0xf0
+    mov [es:bx + 4], al
+    mov byte [es:bx + 5], PATCH_HEIGHT & 0xff
+    mov al, [es:bx + 7]
+    and al, 0x0f
+    or al, (PATCH_HEIGHT >> 4) & 0xf0
+    mov [es:bx + 7], al
+
+    mov edx, BI_FLAG_VBIOS_PATCHED      ; did it stick? (it won't if PAM ignored us)
+    cmp byte [es:bx + 2], PATCH_WIDTH & 0xff
+    jne .failed
+    cmp byte [es:bx + 5], PATCH_HEIGHT & 0xff
+    je .relock
+.failed:
+    mov edx, BI_FLAG_VBIOS_PATCH_FAILED
+.relock:
+    or [BOOT_INFO_ADDR + bi.flags], edx
+    mov eax, PAM_ADDRESS
+    mov dx, 0xcf8
+    out dx, eax
+    mov dx, 0xcfd
+    mov al, [saved_pam1]
+    out dx, al
+    mov dx, 0xcfe
+    mov al, [saved_pam2]
+    out dx, al
+.done:
+    pop es
+.skip:
+    ret
 
 ; --- 5. VBE -------------------------------------------------------------------
 
@@ -576,6 +708,8 @@ dap:                                ; int 13h AH=42h disk address packet
 boot_drive      db 0
 best_score      db 0
 best_mode       dw 0
+saved_pam1      db 0
+saved_pam2      db 0
 cur_mode        dw 0
 read_count      dw 0
 tsc_stage2      dq 0
