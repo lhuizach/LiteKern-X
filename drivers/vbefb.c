@@ -3,16 +3,20 @@
  * fb_* fields describe the mode stage 2 set. Interface: kernel/fb.h.
  *
  * Only 32 bpp linear framebuffers, as stage 2 only ever picks those. No
- * mode setting, no acceleration (GMA 950 native modesetting is a Non-Goal). */
+ * mode setting, no acceleration (GMA 950 native modesetting is a Non-Goal).
+ * On init it asks for the framebuffer to be write-combining (kernel/mtrr.h);
+ * FB_GET_INFO reports whether that worked. */
 #include "boot/bootinfo.h"
 #include "drivers/builtin.h"
 #include "kernel/errno.h"
 #include "kernel/fb.h"
+#include "kernel/mtrr.h"
 #include "kernel/vmm.h"
 
 struct vbefb {
     volatile uint8_t *base;
     uint32_t width, height, pitch, phys;
+    uint32_t wc_status, wc_base, wc_len;
 };
 
 static struct vbefb fb;     /* one display */
@@ -34,6 +38,9 @@ static int vbefb_init(device_t *dev)
     fb.width = bi->fb_width;
     fb.height = bi->fb_height;
     fb.pitch = bi->fb_pitch;
+    /* Best effort: a framebuffer that stays uncached is slow, not broken. */
+    fb.wc_status = mtrr_set_write_combining(fb.phys, fb.pitch * fb.height, bi,
+                                            &fb.wc_base, &fb.wc_len);
     dev->priv = &fb;
     return 0;
 }
@@ -92,6 +99,9 @@ static int vbefb_ioctl(device_t *dev, unsigned cmd, void *arg)
         info->pitch = fb.pitch;
         info->bpp = 32;
         info->phys_addr = fb.phys;
+        info->wc_status = fb.wc_status;
+        info->wc_base = fb.wc_base;
+        info->wc_len = fb.wc_len;
         return 0;
     }
     case FB_FILL_RECT:

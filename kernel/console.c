@@ -1,23 +1,29 @@
 #include "kernel/console.h"
 #include "kernel/errno.h"
 #include "kernel/fb.h"
+#include "kernel/font.h"
 #include "kernel/printk.h"
 #include "kernel/string.h"
 
-#define GLYPH_W     8
-#define GLYPH_H     16
+#define GLYPH_W     FONT_W
+#define GLYPH_H     FONT_H
 #define MAX_COLS    160     /* 1280 px */
 #define MAX_ROWS    64      /* 1024 px */
 #define HISTORY     512     /* lines kept for scrollback */
 
 static device_t *fb;
-static uint8_t font[256 * GLYPH_H];
 static char history[HISTORY][MAX_COLS];     /* line n lives at history[n % HISTORY] */
 static uint32_t cols, rows;
 static uint32_t line, col;                  /* where the next character goes */
 static uint32_t scrollback;                 /* lines scrolled up from the live view */
 static uint32_t fg = 0x00c8d0dc, bg = 0x001e3a5f;
-static int active;
+static int active;                          /* initialised: lines are recorded */
+static int hidden;                          /* console_set_visible(0): record, don't draw */
+
+static int drawing(void)
+{
+    return active && !hidden;
+}
 
 static char *text(uint32_t n)
 {
@@ -34,7 +40,7 @@ static uint32_t top(void)
 static void draw_glyph(uint32_t c, uint32_t r, uint8_t ch, uint32_t f, uint32_t b)
 {
     uint32_t px[GLYPH_W * GLYPH_H];
-    const uint8_t *glyph = &font[ch * GLYPH_H];
+    const uint8_t *glyph = font_glyph(ch);
     for (uint32_t y = 0; y < GLYPH_H; y++)
         for (uint32_t x = 0; x < GLYPH_W; x++)
             px[y * GLYPH_W + x] = (glyph[y] & (0x80 >> x)) ? f : b;
@@ -70,7 +76,7 @@ static void newline(void)
     col = 0;
     line++;
     memset(text(line), ' ', MAX_COLS);
-    if (!active)
+    if (!drawing())
         return;
     if (scrollback) {
         scrollback = 0;         /* new output returns to the live view */
@@ -96,12 +102,12 @@ static void put(char c)
     }
     if (col == cols)
         newline();
-    if (active && scrollback) {
+    if (drawing() && scrollback) {
         scrollback = 0;
         redraw();
     }
     text(line)[col] = c;
-    if (active)
+    if (drawing())
         draw_glyph(col, line - top(), (uint8_t)c, fg, bg);
     col++;
 }
@@ -109,11 +115,10 @@ static void put(char c)
 int console_init(device_t *dev, uint32_t font_addr)
 {
     struct fb_info info;
-    if (!font_addr || dev_ioctl(dev, FB_GET_INFO, &info) < 0)
+    if (font_init(font_addr) < 0 || dev_ioctl(dev, FB_GET_INFO, &info) < 0)
         return -ENODEV;
 
     fb = dev;
-    memcpy(font, (const void *)font_addr, sizeof(font));   /* video BIOS ROM, below 1 MiB */
     cols = info.width / GLYPH_W < MAX_COLS ? info.width / GLYPH_W : MAX_COLS;
     rows = info.height / GLYPH_H < MAX_ROWS ? info.height / GLYPH_H : MAX_ROWS;
     memset(history, ' ', sizeof(history));
@@ -141,17 +146,26 @@ void console_putc(char c)
         put(c);
 }
 
+void console_set_visible(int visible)
+{
+    hidden = !visible;
+    if (drawing()) {
+        scrollback = 0;
+        redraw();
+    }
+}
+
 void console_set_colours(uint32_t new_fg, uint32_t new_bg)
 {
     fg = new_fg;
     bg = new_bg;
-    if (active)
+    if (drawing())
         redraw();
 }
 
 void console_scroll(int lines)
 {
-    if (!active)
+    if (!drawing())
         return;
     uint32_t live_top = line + 1 > rows ? line + 1 - rows : 0;
     uint32_t oldest = line >= HISTORY ? line - HISTORY + 1 : 0;

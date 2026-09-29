@@ -7,12 +7,12 @@ Goal: a stable, usable GUI — not decorated yet (that's Phase 3), but functiona
 ---
 
 ## 1. Rendering pipeline (~4 hrs)
-- [ ] Port framebuffer rendering from v1, but running through the Phase 1 display driver interface (not direct hardware access like v1 had)
-- [ ] Basic primitives: fill rect, draw line, blit bitmap, draw text (even a crude bitmap font is fine for now)
-- [ ] Confirm rendering performance doesn't regress vs v1's best state
+- [x] Port framebuffer rendering from v1, but running through the Phase 1 display driver interface (not direct hardware access like v1 had) — v1's design kept (RAM back buffer + present only changed rectangles): `kernel/screen.c` presents through `fb0`'s `FB_BLIT`, with a merging damage list. v1's framebuffer write-combining is ported too (`kernel/mtrr.c`), now using the Intel SDM's safe update sequence and refusing ranges that would cover RAM. v1's pixel-aspect correction isn't needed (native 1024×600)
+- [x] Basic primitives: fill rect, draw line, blit bitmap, draw text (even a crude bitmap font is fine for now) — `kernel/gfx.c`: fill, outline, line, opaque and alpha blit, text in the BIOS 8×16 font (`kernel/font.c`, shared with the console), all clipped. 23-check self-test with guard words around the surfaces (`tests/kernel/selftest_gfx.c`)
+- [ ] Confirm rendering performance doesn't regress vs v1's best state — timings are measured by `litekernx-gfx-test.img` (`make usb`); needs an EeePC run (QEMU: full-screen present 2.5 ms, 32×32 present ~0 ms)
 
 ## 2. Cursor system (~2 hrs)
-- [ ] Port cursor rasterization from v1 (SVG-spec cursors)
+- [ ] Cursors are PNG images now (`assets/cursors/`, rules in `docs/ASSET-PROMPTS.md` §3), converted at build time — replaces porting v1's SVG cursor rasteriser (`arrow.png` is ready)
 - [ ] Cursor movement driven by the Phase 1 touchpad/mouse driver (keyboard fallback optional)
 - [ ] Confirm no tearing/lag at this stage — this was already a v1 strength, don't lose it
 

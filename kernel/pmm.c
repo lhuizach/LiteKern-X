@@ -72,6 +72,25 @@ uint32_t pmm_alloc(void)
     return 0;
 }
 
+uint32_t pmm_alloc_contiguous(uint32_t count)
+{
+    if (!count || count > free_count)
+        return 0;
+    uint32_t run = 0;
+    for (uint32_t frame = LOW_LIMIT / PAGE_SIZE; frame < FRAMES; frame++) {
+        run = is_used(frame) ? 0 : run + 1;
+        if (run < count)
+            continue;
+        uint32_t first = frame + 1 - count;
+        for (uint32_t f = first; f <= frame; f++)
+            set_used(f);
+        free_count -= count;
+        memset((void *)(first * PAGE_SIZE), 0, count * PAGE_SIZE);
+        return first * PAGE_SIZE;
+    }
+    return 0;
+}
+
 void pmm_free(uint32_t phys)
 {
     uint32_t frame = phys / PAGE_SIZE;

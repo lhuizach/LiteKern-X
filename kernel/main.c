@@ -3,7 +3,9 @@
 #include "drivers/builtin.h"
 #include "kernel/console.h"
 #include "kernel/driver.h"
+#include "kernel/fb.h"
 #include "kernel/gdt.h"
+#include "kernel/mtrr.h"
 #include "kernel/idt.h"
 #include "kernel/input.h"
 #include "kernel/io.h"
@@ -28,6 +30,9 @@ void selftest_drivers_run(void);
 #endif
 #ifdef LKX_SELFTEST_USER
 void selftest_user_run(void);
+#endif
+#ifdef LKX_SELFTEST_GFX
+void selftest_gfx_run(void);
 #endif
 
 /* boot_info and the E820 map live in page 0, which paging leaves unmapped
@@ -157,6 +162,19 @@ static void __attribute__((noreturn)) idle(const struct boot_info *bi)
     }
 }
 
+/* How fast the display path is: write-combining makes every framebuffer
+ * write roughly 10-30x cheaper on real hardware (kernel/mtrr.h). */
+static void display_report(void)
+{
+    struct fb_info info;
+    if (dev_ioctl(device_find("fb0"), FB_GET_INFO, &info) < 0)
+        return;
+    kprintf("fb0: write-combining %s", mtrr_result_name(info.wc_status));
+    if (info.wc_status == MTRR_OK)
+        kprintf(" (MTRR 0x%08x-0x%08x)", info.wc_base, info.wc_base + info.wc_len - 1);
+    kprintf("\n");
+}
+
 void kmain(uint32_t magic, const struct boot_info *handoff)
 {
     serial_init();
@@ -216,6 +234,7 @@ void kmain(uint32_t magic, const struct boot_info *handoff)
     vmm_report();
     pci_report();
     device_report();
+    display_report();
 
 #ifdef LKX_DIAG_VBIOS
     vbios_diag(bi);
@@ -225,6 +244,9 @@ void kmain(uint32_t magic, const struct boot_info *handoff)
 #endif
 #ifdef LKX_SELFTEST_USER
     selftest_user_run();
+#endif
+#ifdef LKX_SELFTEST_GFX
+    selftest_gfx_run();
 #endif
 #ifdef LKX_SELFTEST_KERNEL_NULL
     kprintf("selftest: kernel null-pointer write\n");

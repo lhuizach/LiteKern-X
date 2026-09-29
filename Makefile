@@ -114,16 +114,20 @@ USB_TEST_FLAGS := BUILD=build/test-user EXTRA_CFLAGS=-DLKX_SELFTEST_USER \
 usb: $(IMAGE)
 	@$(MAKE) -s $(USB_TEST_FLAGS) build/test-user/litekernx.img
 	@$(MAKE) -s BUILD=build/diag-vbios EXTRA_CFLAGS=-DLKX_DIAG_VBIOS build/diag-vbios/litekernx.img
+	@$(MAKE) -s BUILD=build/test-gfx EXTRA_CFLAGS=-DLKX_SELFTEST_GFX \
+		EXTRA_KERNEL_SRCS=tests/kernel/selftest_gfx.c build/test-gfx/litekernx.img
 	@mkdir -p build/usb
 	@cp $(IMAGE) build/usb/litekernx.img
 	@cp build/test-user/litekernx.img build/usb/litekernx-ring3-test.img
 	@cp build/diag-vbios/litekernx.img build/usb/litekernx-vbios-diag.img
+	@cp build/test-gfx/litekernx.img build/usb/litekernx-gfx-test.img
 	@truncate -s 1M build/usb/litekernx.img build/usb/litekernx-ring3-test.img \
-		build/usb/litekernx-vbios-diag.img
+		build/usb/litekernx-vbios-diag.img build/usb/litekernx-gfx-test.img
 	@echo "USB images (write one at a time; see docs/HARDWARE-TEST.md):"
 	@echo "  build/usb/litekernx.img             normal boot"
 	@echo "  build/usb/litekernx-ring3-test.img  ring 3 self-test"
 	@echo "  build/usb/litekernx-vbios-diag.img  video BIOS diagnostic (1024x600 fix)"
+	@echo "  build/usb/litekernx-gfx-test.img    rendering pipeline self-test + timings"
 
 # --- VirtualBox VM (vm/vbox.sh) ---------------------------------------------
 # Not part of `make test`: it needs the Windows VirtualBox install.

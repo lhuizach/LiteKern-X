@@ -24,6 +24,8 @@ void status_init(const struct boot_info *bi)
 void status_show(enum status s)
 {
     if (console_active()) {
+        if (s == STATUS_PANIC)
+            console_set_visible(1);     /* a crash is never hidden behind the GUI */
         console_set_colours(colours[s].fg, colours[s].bg);
         return;
     }

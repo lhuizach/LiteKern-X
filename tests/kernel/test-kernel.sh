@@ -28,6 +28,8 @@ make -s BUILD=build/test-kernel-wp EXTRA_CFLAGS=-DLKX_SELFTEST_KERNEL_WP \
     build/test-kernel-wp/litekernx.img >/dev/null || exit 1
 make -s BUILD=build/diag-vbios EXTRA_CFLAGS=-DLKX_DIAG_VBIOS build/diag-vbios/litekernx.img \
     >/dev/null || exit 1
+make -s BUILD=build/test-gfx EXTRA_CFLAGS=-DLKX_SELFTEST_GFX EXTRA_KERNEL_SRCS=tests/kernel/selftest_gfx.c \
+    build/test-gfx/litekernx.img >/dev/null || exit 1
 
 # The 1024x600 video BIOS patch, tested on QEMU's q35 (945-style PAM registers)
 # with a video BIOS carrying the EeePC's Intel mode table. SeaBIOS on q35
@@ -152,7 +154,19 @@ check "binds the COM1, display, keyboard and touchpad drivers" \
 check "shows the boot log on screen (navy = ready)" \
     '^console: 128x48 characters, video BIOS font at 0x[0-9a-f]{5}$' \
     "^screen: corner $NAVY$" \
-    "^screen: has $TEXT in 0,16,100,32: yes$"
+    "^screen: has $TEXT in 0,16,100,32: yes$" \
+    '^fb0: write-combining on \(MTRR 0xfd000000-0xfd3fffff\)$'
+
+SCREEN="corner= has=ffffff@16,16,200,32 has=e8a33d@376,48,428,88 has=48a6e8@16,110,500,290" \
+    boot_until build/test-gfx/litekernx.img '^selftest: gfx [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$' 20
+check "rendering pipeline: primitives, clipping, damage, present (+ pattern on screen)" \
+    '^selftest: gfx ([0-9]+)/\1 passed$' \
+    '^gfx: bench 1024x768: ' \
+    "^screen: corner $NAVY$" \
+    '^screen: has ffffff in 16,16,200,32: yes$' \
+    '^screen: has e8a33d in 376,48,428,88: yes$' \
+    '^screen: has 48a6e8 in 16,110,500,290: yes$' \
+    '!selftest: FAIL|PANIC'
 
 QEMU_MACHINE=q35 boot_until build/test-boot/diag-1m.img "$done_re" 20 \
     -vga none -device VGA,romfile=build/test-boot/fake-intel-vgabios.bin

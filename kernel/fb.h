@@ -18,6 +18,8 @@ struct fb_info {
     uint32_t pitch;         /* bytes per scanline */
     uint32_t bpp;           /* always 32 */
     uint32_t phys_addr;     /* for kernel diagnostics only; draw through ioctls */
+    uint32_t wc_status;     /* enum mtrr_result (kernel/mtrr.h): MTRR_OK = write-combining */
+    uint32_t wc_base, wc_len;   /* the MTRR range, when wc_status is MTRR_OK */
 };
 
 struct fb_rect {

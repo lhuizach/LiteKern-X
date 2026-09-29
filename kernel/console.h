@@ -21,6 +21,11 @@ void console_putc(char c);
 /* Change colours and redraw everything (used for the ready/panic status). */
 void console_set_colours(uint32_t fg, uint32_t bg);
 
+/* Hide (0) or show (1) the console. Hidden, it keeps recording lines but
+ * stops drawing, so something else (the GUI) can own the screen; showing it
+ * redraws. A panic always shows it again (kernel/status.c). */
+void console_set_visible(int visible);
+
 /* Scrollback: move the view `lines` up (> 0) or down (< 0) through the last
  * 512 lines, clamped. Any new output returns to the live view. */
 void console_scroll(int lines);
