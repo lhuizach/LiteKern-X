@@ -2,7 +2,9 @@
 #include "boot/bootinfo.h"
 #include "drivers/builtin.h"
 #include "kernel/console.h"
+#include "kernel/cursor.h"
 #include "kernel/driver.h"
+#include "kernel/screen.h"
 #include "kernel/fb.h"
 #include "kernel/gdt.h"
 #include "kernel/mtrr.h"
@@ -149,6 +151,8 @@ static void __attribute__((noreturn)) idle(const struct boot_info *bi)
                 last_log = uptime_ms();
             }
         }
+        if (nm > 0)
+            cursor_move_to(x, y);   /* once per batch: two small screen updates */
         if (moved && uptime_ms() - last_log >= MOUSE_LOG_MS) {
             log_pointer(x, y, buttons);
             moved = 0;
@@ -218,11 +222,16 @@ void kmain(uint32_t magic, const struct boot_info *handoff)
     uint64_t drivers_done = rdtsc();
     boot_phase("drivers", pci_done, drivers_done);
 
-    /* First frame: the on-screen log (replaying everything so far) if the
-     * display driver and font are there, else the plain status colour. */
-    if (console_init(device_find("fb0"), bi->font_addr) < 0)
-        kprintf("console: unavailable (no display or no BIOS font); status colour only\n");
+    /* First frame: the screen (back buffer), the on-screen log on it
+     * (replaying everything so far) and the cursor. Without a display or
+     * font, the plain status colour. */
+    int screen_err = screen_init(device_find("fb0"));
+    if (screen_err < 0 || console_init(bi->font_addr) < 0)
+        kprintf("console: unavailable (%s); status colour only\n",
+                screen_err < 0 ? "no screen" : "no BIOS font");
     status_show(STATUS_READY);
+    if (screen_ready() && cursor_init() < 0)
+        kprintf("cursor: no \"arrow\" cursor built in\n");
     uint64_t ready = rdtsc();
     boot_phase("first_frame", drivers_done, ready);
 

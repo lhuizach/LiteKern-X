@@ -7,6 +7,7 @@
  * Then timings for the EeePC, and a test pattern left on screen. Any failed
  * check panics, so on real hardware the screen turns red. */
 #include "kernel/console.h"
+#include "kernel/cursor.h"
 #include "kernel/fb.h"
 #include "kernel/font.h"
 #include "kernel/gfx.h"
@@ -193,6 +194,49 @@ static void test_present(void)
           "present copies exactly the damaged area to the display");
 }
 
+/* The overlay (what the mouse cursor uses): composited on the way to the
+ * display, never written into the back buffer. */
+static void test_overlay(void)
+{
+    struct fb_info info;
+    dev_ioctl(device_find("fb0"), FB_GET_INFO, &info);
+    volatile uint32_t *fbmem = (volatile uint32_t *)info.phys_addr;
+    uint32_t pitch = info.pitch / 4;
+    struct gfx_surface *scr = screen_surface();
+#define FB(x, y) fbmem[(uint32_t)(y) * pitch + (uint32_t)(x)]
+#define BACK(x, y) scr->px[(y) * scr->stride + (x)]
+
+    static const uint32_t ov[4] = { 0xffff0000, 0x80ff0000, 0x00ff0000, 0xff00ff00 };
+    gfx_fill_rect(scr, 300, 300, 20, 20, 0x0000ff);
+    screen_damage(300, 300, 20, 20);
+    screen_present();
+    screen_set_overlay(ov, 2, 2, 305, 305);
+    screen_present();
+    check(FB(305, 305) == 0xff0000 && near(FB(306, 305), 0x80007f) && FB(305, 306) == 0x0000ff &&
+              FB(306, 306) == 0x00ff00,
+          "overlay is alpha-composited onto the display");
+    check(BACK(305, 305) == 0x0000ff && BACK(306, 306) == 0x0000ff,
+          "overlay never touches the back buffer");
+    screen_set_overlay(ov, 2, 2, 310, 310);
+    screen_present();
+    check(FB(305, 305) == 0x0000ff && FB(306, 306) == 0x0000ff && FB(310, 310) == 0xff0000,
+          "moving the overlay restores what was under it");
+    gfx_fill_rect(scr, 309, 309, 4, 4, 0x123456);
+    screen_damage(300, 300, 20, 20);    /* scene changes under the overlay */
+    screen_present();
+    check(FB(310, 310) == 0xff0000 && FB(309, 309) == 0x123456 && FB(312, 312) == 0x123456,
+          "redrawing under the overlay keeps it on top");
+    screen_set_overlay(ov, 2, 2, scr->w - 1, scr->h - 1);
+    screen_present();
+    check(FB(scr->w - 1, scr->h - 1) == 0xff0000, "an overlay half off the screen is clipped");
+    screen_set_overlay(0, 0, 0, 0, 0);
+    screen_present();
+    check(FB(scr->w - 1, scr->h - 1) == BACK(scr->w - 1, scr->h - 1), "removing the overlay restores the screen");
+    cursor_refresh();
+#undef FB
+#undef BACK
+}
+
 static uint32_t ms_x10(uint64_t ticks, uint32_t n)
 {
     return tsc_to_ms(ticks * 10 / n);
@@ -263,13 +307,18 @@ static void test_pattern(void)
 
 void selftest_gfx_run(void)
 {
-    if (screen_init(device_find("fb0")) < 0)
+    if (!screen_ready())
         panic("gfx self-test: no screen");
+    /* The console draws through the screen too; while it's visible, every
+     * line it prints would present (emptying the damage list) and draw over
+     * the pixels under test. Hidden, it still records and goes to serial,
+     * and a panic shows it again. */
+    console_set_visible(0);
     test_primitives();
     test_damage();
     test_present();
+    test_overlay();
     benchmark();
-    console_set_visible(0);     /* the screen is ours now; the log goes on in the history */
     test_pattern();
     kprintf("selftest: gfx %d/%d passed\n", passed, passed + failed);
     if (failed)

@@ -1,6 +1,7 @@
 #include "kernel/console.h"
 #include "kernel/errno.h"
-#include "kernel/fb.h"
+#include "kernel/gfx.h"
+#include "kernel/screen.h"
 #include "kernel/font.h"
 #include "kernel/printk.h"
 #include "kernel/string.h"
@@ -11,7 +12,6 @@
 #define MAX_ROWS    64      /* 1024 px */
 #define HISTORY     512     /* lines kept for scrollback */
 
-static device_t *fb;
 static char history[HISTORY][MAX_COLS];     /* line n lives at history[n % HISTORY] */
 static uint32_t cols, rows;
 static uint32_t line, col;                  /* where the next character goes */
@@ -37,15 +37,17 @@ static uint32_t top(void)
     return bottom_top - scrollback;
 }
 
+/* Draw one cell into the screen's back buffer (not presented yet). */
+static void cell(uint32_t c, uint32_t r, uint8_t ch, uint32_t f, uint32_t b)
+{
+    gfx_char(screen_surface(), (int)(c * GLYPH_W), (int)(r * GLYPH_H), (char)ch, f, b);
+    screen_damage((int)(c * GLYPH_W), (int)(r * GLYPH_H), GLYPH_W, GLYPH_H);
+}
+
 static void draw_glyph(uint32_t c, uint32_t r, uint8_t ch, uint32_t f, uint32_t b)
 {
-    uint32_t px[GLYPH_W * GLYPH_H];
-    const uint8_t *glyph = font_glyph(ch);
-    for (uint32_t y = 0; y < GLYPH_H; y++)
-        for (uint32_t x = 0; x < GLYPH_W; x++)
-            px[y * GLYPH_W + x] = (glyph[y] & (0x80 >> x)) ? f : b;
-    struct fb_blit blit = { c * GLYPH_W, r * GLYPH_H, GLYPH_W, GLYPH_H, px, GLYPH_W };
-    dev_ioctl(fb, FB_BLIT, &blit);
+    cell(c, r, ch, f, b);
+    screen_present();
 }
 
 static void draw_indicator(void)
@@ -53,22 +55,23 @@ static void draw_indicator(void)
     static const char msg[] = " scrolled back - PgDn / End to return ";
     uint32_t len = sizeof(msg) - 1, c0 = cols > len ? cols - len : 0;
     for (uint32_t i = 0; i < len && c0 + i < cols; i++)
-        draw_glyph(c0 + i, 0, (uint8_t)msg[i], bg, fg);     /* inverse video */
+        cell(c0 + i, 0, (uint8_t)msg[i], bg, fg);     /* inverse video */
 }
 
+/* Whole screen: drawn into the back buffer, then presented once. */
 static void redraw(void)
 {
-    struct fb_info info;
-    dev_ioctl(fb, FB_GET_INFO, &info);
-    struct fb_rect all = { 0, 0, info.width, info.height, bg };
-    dev_ioctl(fb, FB_FILL_RECT, &all);
+    struct gfx_surface *s = screen_surface();
+    gfx_fill_rect(s, 0, 0, s->w, s->h, bg);
     uint32_t t = top();
     for (uint32_t r = 0; r < rows && t + r <= line; r++)
         for (uint32_t c = 0; c < cols; c++)
             if (text(t + r)[c] != ' ')
-                draw_glyph(c, r, (uint8_t)text(t + r)[c], fg, bg);
+                gfx_char(s, (int)(c * GLYPH_W), (int)(r * GLYPH_H), text(t + r)[c], fg, bg);
     if (scrollback)
         draw_indicator();
+    screen_damage_all();
+    screen_present();
 }
 
 static void newline(void)
@@ -112,15 +115,14 @@ static void put(char c)
     col++;
 }
 
-int console_init(device_t *dev, uint32_t font_addr)
+int console_init(uint32_t font_addr)
 {
-    struct fb_info info;
-    if (font_init(font_addr) < 0 || dev_ioctl(dev, FB_GET_INFO, &info) < 0)
+    if (font_init(font_addr) < 0 || !screen_ready())
         return -ENODEV;
 
-    fb = dev;
-    cols = info.width / GLYPH_W < MAX_COLS ? info.width / GLYPH_W : MAX_COLS;
-    rows = info.height / GLYPH_H < MAX_ROWS ? info.height / GLYPH_H : MAX_ROWS;
+    struct gfx_surface *s = screen_surface();
+    cols = (uint32_t)s->w / GLYPH_W < MAX_COLS ? (uint32_t)s->w / GLYPH_W : MAX_COLS;
+    rows = (uint32_t)s->h / GLYPH_H < MAX_ROWS ? (uint32_t)s->h / GLYPH_H : MAX_ROWS;
     memset(history, ' ', sizeof(history));
     line = col = scrollback = 0;
 

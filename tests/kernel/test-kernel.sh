@@ -209,6 +209,15 @@ check "touchpad: IRQ 12 packets decoded (direction, buttons, clamped at the edge
     '^mouse: \(1023, 0\) buttons ---$' \
     '!PANIC'
 
+BLACK=000000
+KEYS="move:40,30 move:-10,0" KEYS_DONE='^mouse: \(542, 414\) buttons ---' \
+SCREEN="has=$BLACK@542,414,560,440 has=$BLACK@505,380,540,410" \
+    boot_until build/litekernx.img "$done_re" 20
+check "cursor: the arrow follows the touchpad, nothing left behind" \
+    "^screen: has $BLACK in 542,414,560,440: yes$" \
+    "^screen: has $BLACK in 505,380,540,410: no$" \
+    '!cursor: no|PANIC'
+
 KEYS="a b c d e f g h i j k l m home" KEYS_DONE="^kbd: key 0x026 'l'" \
 SCREEN="has=$TEXT@0,0,200,16 has=$TEXT@800,0,1024,16 has=$TEXT@0,16,100,32" \
     boot_until build/litekernx.img "$done_re" 20

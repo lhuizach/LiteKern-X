@@ -7,6 +7,8 @@ static device_t *fb;
 static struct gfx_surface back;
 static struct gfx_rect damage[SCREEN_MAX_DAMAGE];
 static int ndamage;
+static const uint32_t *overlay_px;      /* NULL: no overlay */
+static struct gfx_rect overlay;
 
 int screen_init(device_t *dev)
 {
@@ -70,18 +72,63 @@ void screen_damage_all(void)
     screen_damage(0, 0, back.w, back.h);
 }
 
+/* Copy one rectangle of the back buffer, unchanged, to the display. */
+static uint32_t copy_out(struct gfx_rect r)
+{
+    if (gfx_rect_empty(r))
+        return 0;
+    struct fb_blit b = { (uint32_t)r.x, (uint32_t)r.y, (uint32_t)r.w, (uint32_t)r.h,
+                         back.px + r.y * back.stride + r.x, (uint32_t)back.stride };
+    dev_ioctl(fb, FB_BLIT, &b);
+    return (uint32_t)(r.w * r.h);
+}
+
+/* Copy a rectangle that lies inside the overlay: back buffer + overlay on top,
+ * composed in a scratch buffer so each display pixel is written once. */
+static uint32_t copy_out_with_overlay(struct gfx_rect r)
+{
+    static uint32_t scratch[SCREEN_OVERLAY_MAX * SCREEN_OVERLAY_MAX];
+    struct gfx_surface tmp = { scratch, r.w, r.h, r.w };
+    gfx_blit(&tmp, 0, 0, &back, r.x, r.y, r.w, r.h);
+    gfx_blit_alpha(&tmp, overlay.x - r.x, overlay.y - r.y, overlay_px, overlay.w, overlay.h,
+                   overlay.w);
+    struct fb_blit b = { (uint32_t)r.x, (uint32_t)r.y, (uint32_t)r.w, (uint32_t)r.h, scratch,
+                         (uint32_t)r.w };
+    dev_ioctl(fb, FB_BLIT, &b);
+    return (uint32_t)(r.w * r.h);
+}
+
 uint32_t screen_present(void)
 {
     uint32_t pixels = 0;
     for (int i = 0; i < ndamage; i++) {
         struct gfx_rect r = damage[i];
-        struct fb_blit b = { (uint32_t)r.x, (uint32_t)r.y, (uint32_t)r.w, (uint32_t)r.h,
-                             back.px + r.y * back.stride + r.x, (uint32_t)back.stride };
-        dev_ioctl(fb, FB_BLIT, &b);
-        pixels += (uint32_t)(r.w * r.h);
+        struct gfx_rect o = overlay_px ? gfx_rect_intersect(r, overlay) : (struct gfx_rect){ 0, 0, 0, 0 };
+        if (gfx_rect_empty(o)) {
+            pixels += copy_out(r);
+            continue;
+        }
+        /* The bands of r above, below, left and right of the overlay part. */
+        pixels += copy_out((struct gfx_rect){ r.x, r.y, r.w, o.y - r.y });
+        pixels += copy_out((struct gfx_rect){ r.x, o.y + o.h, r.w, r.y + r.h - (o.y + o.h) });
+        pixels += copy_out((struct gfx_rect){ r.x, o.y, o.x - r.x, o.h });
+        pixels += copy_out((struct gfx_rect){ o.x + o.w, o.y, r.x + r.w - (o.x + o.w), o.h });
+        pixels += copy_out_with_overlay(o);
     }
     ndamage = 0;
     return pixels;
+}
+
+void screen_set_overlay(const uint32_t *argb, int w, int h, int x, int y)
+{
+    if (w > SCREEN_OVERLAY_MAX || h > SCREEN_OVERLAY_MAX)
+        return;
+    if (overlay_px)
+        screen_damage(overlay.x, overlay.y, overlay.w, overlay.h);
+    overlay_px = argb;
+    overlay = (struct gfx_rect){ x, y, w, h };
+    if (overlay_px)
+        screen_damage(x, y, w, h);
 }
 
 int screen_damage_count(void)
