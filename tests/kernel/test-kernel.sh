@@ -30,6 +30,8 @@ make -s BUILD=build/diag-vbios EXTRA_CFLAGS=-DLKX_DIAG_VBIOS build/diag-vbios/li
     >/dev/null || exit 1
 make -s BUILD=build/test-gfx EXTRA_CFLAGS=-DLKX_SELFTEST_GFX EXTRA_KERNEL_SRCS=tests/kernel/selftest_gfx.c \
     build/test-gfx/litekernx.img >/dev/null || exit 1
+make -s BUILD=build/test-wm EXTRA_CFLAGS=-DLKX_SELFTEST_WM EXTRA_KERNEL_SRCS=tests/kernel/selftest_wm.c \
+    build/test-wm/litekernx.img >/dev/null || exit 1
 
 # The 1024x600 video BIOS patch, tested on QEMU's q35 (945-style PAM registers)
 # with a video BIOS carrying the EeePC's Intel mode table. SeaBIOS on q35
@@ -217,6 +219,23 @@ check "cursor: the arrow follows the touchpad, nothing left behind" \
     "^screen: has $BLACK in 542,414,560,440: yes$" \
     "^screen: has $BLACK in 505,380,540,410: no$" \
     '!cursor: no|PANIC'
+
+# Window system: the self-test leaves a window open; the cursor (starting at
+# the centre, 512,384) is moved onto the close button (1001,23) and clicked.
+SCREEN="has=222226@200,400,800,700 corner=" \
+    boot_until build/test-wm/litekernx.img '^selftest: wm [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$' 20
+check "window system: header bar, buttons, events (+ Adwaita dark window on screen)" \
+    '^selftest: wm ([0-9]+)/\1 passed$' \
+    '^screen: has 222226 in 200,400,800,700: yes$' \
+    '^screen: corner 222226$' \
+    '!selftest: FAIL|PANIC'
+
+KEYS="move:489,-361 press:1 release" KEYS_DONE='^wm: close' SCREEN="corner=" \
+    boot_until build/test-wm/litekernx.img '^mouse: \(512, 384\) buttons ---.?$' 20
+check "window system: clicking the close button closes the window, the log comes back" \
+    '^wm: close$' \
+    "^screen: corner $NAVY$" \
+    '!PANIC'
 
 KEYS="a b c d e f g h i j k l m home" KEYS_DONE="^kbd: key 0x026 'l'" \
 SCREEN="has=$TEXT@0,0,200,16 has=$TEXT@800,0,1024,16 has=$TEXT@0,16,100,32" \

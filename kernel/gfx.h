@@ -39,6 +39,10 @@ void gfx_fill_rect(struct gfx_surface *s, int x, int y, int w, int h, uint32_t c
 void gfx_rect_outline(struct gfx_surface *s, int x, int y, int w, int h, uint32_t colour);
 void gfx_line(struct gfx_surface *s, int x0, int y0, int x1, int y1, uint32_t colour);
 
+/* Solid shapes with hard (not anti-aliased) edges; Phase 3 adds smoothing. */
+void gfx_fill_round_rect(struct gfx_surface *s, int x, int y, int w, int h, int r, uint32_t colour);
+void gfx_fill_circle(struct gfx_surface *s, int cx, int cy, int r, uint32_t colour);
+
 /* Copy a w x h block from src (at sx, sy) to dst (at dx, dy). Opaque. */
 void gfx_blit(struct gfx_surface *dst, int dx, int dy,
               const struct gfx_surface *src, int sx, int sy, int w, int h);

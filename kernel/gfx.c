@@ -84,6 +84,37 @@ void gfx_line(struct gfx_surface *s, int x0, int y0, int x1, int y1, uint32_t co
     }
 }
 
+/* How far row `dy` (0 = the corner's outer edge) of a radius-r corner is
+ * inset: the circle x^2 + y^2 = r^2 sampled at pixel centres. */
+static int corner_inset(int r, int dy)
+{
+    int y2 = (2 * (r - dy) - 1) * (2 * (r - dy) - 1);   /* (2y)^2, y = r - dy - 0.5 */
+    int x = r;
+    while (x > 0 && (2 * x - 1) * (2 * x - 1) + y2 > 4 * r * r)
+        x--;
+    return r - x;
+}
+
+void gfx_fill_round_rect(struct gfx_surface *s, int x, int y, int w, int h, int r, uint32_t colour)
+{
+    if (w <= 0 || h <= 0)
+        return;
+    if (r > w / 2)
+        r = w / 2;
+    if (r > h / 2)
+        r = h / 2;
+    for (int row = 0; row < h; row++) {
+        int dy = row < r ? row : row >= h - r ? h - 1 - row : -1;
+        int in = dy < 0 ? 0 : corner_inset(r, dy);
+        gfx_fill_rect(s, x + in, y + row, w - 2 * in, 1, colour);
+    }
+}
+
+void gfx_fill_circle(struct gfx_surface *s, int cx, int cy, int r, uint32_t colour)
+{
+    gfx_fill_round_rect(s, cx - r, cy - r, 2 * r, 2 * r, r, colour);
+}
+
 void gfx_blit(struct gfx_surface *dst, int dx, int dy,
               const struct gfx_surface *src, int sx, int sy, int w, int h)
 {

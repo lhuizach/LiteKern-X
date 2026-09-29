@@ -22,6 +22,7 @@
 #include "kernel/timing.h"
 #include "kernel/vbe.h"
 #include "kernel/vmm.h"
+#include "kernel/wm.h"
 
 void kmain(uint32_t magic, const struct boot_info *handoff) __attribute__((noreturn));
 
@@ -35,6 +36,9 @@ void selftest_user_run(void);
 #endif
 #ifdef LKX_SELFTEST_GFX
 void selftest_gfx_run(void);
+#endif
+#ifdef LKX_SELFTEST_WM
+void selftest_wm_run(void);
 #endif
 
 /* boot_info and the E820 map live in page 0, which paging leaves unmapped
@@ -99,6 +103,30 @@ static void log_key(const struct key_event *ev)
     kprintf("\n");
 }
 
+/* Until apps run (Phase 2 §5) nothing else consumes window events: close
+ * the window when asked, log the rest. */
+static void handle_window_events(void)
+{
+    struct wm_event ev;
+    while (wm_poll_event(&ev)) {
+        switch (ev.type) {
+        case WM_EVENT_CLOSE:
+            kprintf("wm: close\n");
+            wm_close();
+            break;
+        case WM_EVENT_HEADER:
+            kprintf("wm: header button %d\n", ev.id);
+            break;
+        case WM_EVENT_CLICK:
+            kprintf("wm: click (%d, %d)\n", ev.x, ev.y);
+            break;
+        case WM_EVENT_KEY:
+            kprintf("wm: key 0x%03x\n", ev.key.key);
+            break;
+        }
+    }
+}
+
 static void log_pointer(int x, int y, uint8_t buttons)
 {
     kprintf("mouse: (%d, %d) buttons %c%c%c\n", x, y,
@@ -135,14 +163,19 @@ static void __attribute__((noreturn)) idle(const struct boot_info *bi)
         }
         __asm__ volatile("sti");
 
-        for (int i = 0; i < nk / (int)sizeof(keys[0]); i++)
-            log_key(&keys[i]);
+        for (int i = 0; i < nk / (int)sizeof(keys[0]); i++) {
+            if (wm_is_open())
+                wm_input_key(&keys[i]);
+            else
+                log_key(&keys[i]);
+        }
 
         for (int i = 0; i < nm / (int)sizeof(moves[0]); i++) {
             x += moves[i].dx;
             y += moves[i].dy;
             x = x < 0 ? 0 : x >= w ? w - 1 : x;
             y = y < 0 ? 0 : y >= h ? h - 1 : y;
+            wm_input_mouse(x, y, moves[i].buttons);     /* per packet: no click is lost */
             moved |= moves[i].dx || moves[i].dy;
             if (moves[i].buttons != buttons) {      /* clicks are always logged */
                 buttons = moves[i].buttons;
@@ -153,6 +186,7 @@ static void __attribute__((noreturn)) idle(const struct boot_info *bi)
         }
         if (nm > 0)
             cursor_move_to(x, y);   /* once per batch: two small screen updates */
+        handle_window_events();
         if (moved && uptime_ms() - last_log >= MOUSE_LOG_MS) {
             log_pointer(x, y, buttons);
             moved = 0;
@@ -256,6 +290,9 @@ void kmain(uint32_t magic, const struct boot_info *handoff)
 #endif
 #ifdef LKX_SELFTEST_GFX
     selftest_gfx_run();
+#endif
+#ifdef LKX_SELFTEST_WM
+    selftest_wm_run();
 #endif
 #ifdef LKX_SELFTEST_KERNEL_NULL
     kprintf("selftest: kernel null-pointer write\n");

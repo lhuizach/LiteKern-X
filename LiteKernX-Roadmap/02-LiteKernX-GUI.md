@@ -17,20 +17,29 @@ Goal: a stable, usable GUI — not decorated yet (that's Phase 3), but functiona
 - [ ] Confirm no tearing/lag at this stage — this was already a v1 strength, don't lose it — needs the EeePC (`litekernx.img`: move the touchpad over the log)
 
 ## 3. Window/surface model (~4 hrs)
-- [ ] Decide: single fullscreen surface for now, or a real windowing model? (Given hardware constraints, simple is fine — don't over-scope)
-- [ ] Basic input routing — keyboard/mouse events reach the right surface
-- [ ] Redraw/damage handling so you're not redrawing the whole screen every frame (this matters a lot on Atom-class hardware)
+- [x] Decide: single fullscreen surface for now, or a real windowing model? (Given hardware constraints, simple is fine — don't over-scope) — **decided 2026-09-30: one app at a time, full screen**, in the Adwaita (GNOME/Fedora) dark style: a header bar with the app's title and buttons, the app's content below
+- [x] Basic input routing — keyboard/mouse events reach the right surface — `kernel/wm.c`: while a window is open, keys and content clicks (in content coordinates) go to it as events; header-bar buttons report their id; the close button asks the app to close. The Adwaita dark theme is `kernel/theme.c` (token names as planned for Phase 3 §5). 15-check self-test + an end-to-end test that clicks the close button through the emulated touchpad
+- [x] Redraw/damage handling so you're not redrawing the whole screen every frame (this matters a lot on Atom-class hardware) — from §1: only changed rectangles are presented; hovering a header button redraws just that button
 
 ## 4. Core GUI widgets (~5 hrs)
 - [ ] Button, label, basic layout container — minimum set, not a full toolkit
 - [ ] Each widget: state (hover/pressed/disabled), not just static appearance
 - [ ] Keep this minimal — Phase 3 is where these get polished, not here
 
+## 5a. Storage for the Files app (~8 hrs, added 2026-09-30)
+Disks came off the Non-Goals list for the first app, Files (see `docs/NON-GOALS.md`, Decided).
+- [ ] Block device interface through `driver_t` (read/write sectors by LBA via `ioctl`)
+- [ ] **Boot USB stick:** reached through the BIOS with a real-mode call per request (port v1's `boot/realmode_thunk.asm` + `drivers/bios_disk.c` deliberately), read and write
+- [ ] **Internal disk:** ATA PIO driver for the ICH7's IDE-compatible SATA (`8086:27c4`), read-only
+- [ ] MBR partition table; `make usb` gives the stick a second partition, FAT32, that Windows can open too
+- [ ] FAT32: list, read, create, delete, rename files and folders. Writes only ever go to FAT32 partitions, and are checked by a test that compares the result with Linux's own FAT tools
+- [ ] An NTFS (or any non-FAT32) internal disk shows as "not supported" and is never written
+
 ## 5. KERN86 app integration (~3 hrs)
 - [ ] Port `.lkx` loader, `kerns.json` manifest parsing, `kern86.h` API from v1
 - [ ] Apps run in ring 3 — `kern86.h` becomes a thin user-side wrapper over the Phase 1 syscall gate (`int 0x80`), and the kernel side calls through the driver interface instead of v1's direct hardware access
 - [ ] Extend the syscall table only as the test app needs it (draw/present surface, poll input, exit) — no speculative syscalls
-- [ ] Get ONE minimal test app running end-to-end through the new GUI (doesn't need to be useful — proves load → manifest → API → render → input works)
+- [ ] Get ONE minimal test app running end-to-end through the new GUI (doesn't need to be useful — proves load → manifest → API → render → input works) — **it's Files** (decided 2026-09-30): browse the USB stick and the internal disk, create, delete and rename files and folders on FAT32. Kept simple: every app is redone in Phase 3
 - [ ] More apps may follow in this phase once that first one works end to end (the "one app before Polish" Non-Goal was removed 2026-09-29). Each has to meet the same bar: it loads from the ramdisk, runs in ring 3, and misbehaving never takes the kernel down.
 
 ## 6. Stability pass (~2 hrs)
