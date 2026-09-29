@@ -2,7 +2,7 @@
 
 A from-scratch 32-bit x86 OS for the ASUS EeePC 1000HE (Intel Atom N270). It's a clean-slate rewrite of LiteKern v1 that keeps the KERN86 app model (`.lkx`, `kerns.json`, `kern86.h`).
 
-**Status:** all of Phase 1's code is done and tested in QEMU and VirtualBox. Next is the run on the real EeePC ([docs/HARDWARE-TEST.md](docs/HARDWARE-TEST.md), images from `wsl make usb`), which the Phase 1 Done Criteria need before Phase 2. The bootloader is stage 1 + stage 2. The C kernel:
+**Status: Phase 1 (Base) is complete** and verified on the real EeePC 1000HE (2026-09-29): it boots to ready in 179 ms against a 1000 ms budget, at the panel's native 1024×600. Next is Phase 2 (GUI). The bootloader is stage 1 + stage 2. The C kernel:
 - sets up its GDT/IDT/TSS and calibrates the TSC
 - turns on paging: null pointers fault, kernel code is read-only, user space is 2–3 GiB
 - reports the memory map, display mode and every PCI device

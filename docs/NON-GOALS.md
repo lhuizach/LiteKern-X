@@ -45,7 +45,7 @@ These are things LiteKern X is deliberately **not** building for v1.0. If you wa
 | Question | Answer | Where it's built |
 |---|---|---|
 | Where do `.lkx` apps load from? | A read-only ramdisk in the boot image. No disk driver, no filesystem. | Phase 2 §5 |
-| Screen resolution? | Stage 2 prefers the panel's native 1024×600, then falls back to 1024×768 and 800×600 (32 bpp only). | Phase 1 §2 (done) |
+| Screen resolution? | Native 1024×600, 32 bpp. The EeePC's video BIOS lacks that mode, so stage 2 patches its mode table first (`915resolution` style). Elsewhere it falls back to 1024×768, then 800×600. | Phase 1 §2 (done, verified on the EeePC 2026-09-29) |
 
 ## Open questions (decide before the named step, then move the answer to a phase file or to this list)
 | Question | Decide by | Notes |
