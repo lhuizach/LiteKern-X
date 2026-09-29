@@ -5,6 +5,7 @@
 > 2. `02-LiteKernX-GUI.md` — rendering, cursor, surfaces, widgets, KERN86 apps
 > 3. `03-LiteKernX-Polish.md`
 > 4. `04-LiteKernX-Publishing.md`
+> 5. `05-LiteKernX-Expansion.md` — after v1.0: ACPI, audio, USB, networking, users, localisation, x86-64
 >
 > The Stage 0–6 breakdown below is kept for history. Where it disagrees with the phase files (e.g. the `driver_t` definition, KERN86 timing, memory protection), the phase files win.
 

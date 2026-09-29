@@ -239,7 +239,7 @@ APP ICON RULES (in addition to the rules above)
 ```
 
 ### 4.2 Per-app prompts
-Phase 3 calls for **1–3 finished apps**, and which apps is still open. These all suit a no-network OS with a read-only ramdisk:
+Phase 3 calls for **1–2 finished apps** to start with (no fixed cap since 2026-09-29), and which apps is still open. These all suit v1.0, which has no network (that's Phase 5) and a read-only ramdisk:
 
 | File | Symbol prompt (paste after the app-icon rules) |
 |---|---|

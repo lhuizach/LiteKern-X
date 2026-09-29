@@ -42,7 +42,7 @@ Goal: make LiteKern X something other people can actually download, boot, and tr
 ---
 
 ## Future work (explicitly out of scope for X v1.0)
+- Phase 5 (`05-LiteKernX-Expansion.md`): ACPI power management, audio, USB, networking, multiple users, localisation, x86-64
 - ARM64 / Raspberry Pi 4 port
 - Samsung Galaxy S10e port
-- Additional drivers beyond the Phase 1 core set
-- Anything on your Non-Goals list from Phase 1
+- Anything still on `docs/NON-GOALS.md`
