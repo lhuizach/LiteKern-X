@@ -17,7 +17,7 @@ Goal: a booting kernel with a working driver layer and basic hardware detection 
 - [ ] **Custom bootloader** (decided 2026-09-27, no GRUB) — no unnecessary probing, no "just in case" delays
   - [x] Stage 1: 512-byte MBR boot sector, loads stage 2 with BIOS `int 13h` extended reads (LBA) — `boot/stage1.asm`, contract in `docs/BOOT-PROTOCOL.md`, tested by `make test-boot` (VM only; real-EeePC USB boot still to verify)
   - [x] Stage 2: reads the E820 memory map, sets the VBE mode, enables A20, loads the kernel in as few large reads as possible, switches to 32-bit protected mode, and jumps to the kernel with a boot-info struct (T0 TSC, memory map, framebuffer info) — `boot/stage2.asm`, tested by `make test-boot` against a kernel stub (VM only)
-  - [ ] Real-hardware check: boot `build/litekernx.img` from USB on the EeePC — expect a navy screen with a light-blue band (the kernel stub), and note which VBE mode it picked
+  - [x] Real-hardware check (2026-09-29): boots from USB on the EeePC; bootloader 16 ms, VBE 73 ms. **But stage 2 picked 800×600, not the panel's 1024×600** — the GMA 950 video BIOS doesn't offer a 32 bpp 1024×600 mode. Open issue, see below
 - [x] Kernel entry + minimal init (stack, GDT/IDT, memory map read from BIOS) — `kernel/`; exceptions are reported and halt; memory map arrives via `boot_info` (printing it is §3)
 - [x] Add per-phase boot timestamps from the start, so cost is visible immediately — don't leave perf measurement until the end like v1 did (use `rdtsc` from bootloader entry; calibrate against the PIT once so ticks convert to ms)
 
@@ -25,7 +25,7 @@ Goal: a booting kernel with a working driver layer and basic hardware detection 
 - [x] Read BIOS-provided memory map and basic display mode (this is your zero-driver framebuffer + memory info) — `kernel/memmap.c`
 - [x] PCI bus enumeration — walk the bus, read vendor ID / device ID / class code for each device found — `kernel/pci.c`, follows PCI-to-PCI bridges (the EeePC's Ethernet/Wi-Fi sit behind PCIe root ports), results kept in `pci_devices[]` for §4
 - [x] Log/print what's detected, even if nothing is initialized yet — this proves enumeration works independently of drivers (verified in QEMU, incl. a bridge, and VirtualBox)
-- [ ] Real-hardware check: capture the EeePC's device list — now possible: it's on the on-screen boot log (§6.1)
+- [x] Real-hardware check (2026-09-29): 17 devices on 5 buses, including the Atheros Ethernet (`1969:1026`, bus 3) and Wi-Fi (`168c:002a`, bus 1) behind the PCIe root ports — bridge-following works on the real chipset
 
 ## 4. Driver abstraction layer (~2 hrs)
 - [x] Define the fixed driver interface — implemented in `kernel/driver.h` (the source of truth; it adds a `pci_ids` match list to `driver_t` and keeps the PCI info behind `dev->pci`). Every call takes a `device_t *` so one driver can be bound to a specific enumerated device (and, later, to more than one), and `ioctl` gives non-stream devices like the framebuffer a clean escape hatch instead of abusing `read`/`write`:
@@ -67,11 +67,11 @@ Goal: a booting kernel with a working driver layer and basic hardware detection 
 Port from v1 deliberately, not wholesale. Suggested order:
 1. [x] Display/framebuffer driver (through the new interface — VBE linear framebuffer, exposed via `ioctl`) — `drivers/vbefb.c`, device `fb0`; `FB_GET_INFO` / `FB_FILL_RECT` / `FB_BLIT` (clipped), interface in `kernel/fb.h`; 9 display checks in the driver self-test
    - [x] On-screen boot log (`kernel/console.c`), drawn only through `fb0`, using the video BIOS 8×16 font stage 2 locates (`boot_info` v2 `font_addr`). Replays everything logged since boot; background shows the status (navy ready / red panic). A debug console, not GUI work — it's what makes the EeePC (no serial port) debuggable
-   - [ ] Real-hardware check: the EeePC shows the boot log at 1024×600 — photograph it; it answers the §2 VBE-mode and §3 device-list checks too
+   - [x] Real-hardware check (2026-09-29): the boot log shows on the EeePC, scrollback works — at 800×600 (100×37 characters), not 1024×600; see the open issue
 2. [x] i8042 controller + keyboard driver — `drivers/i8042.c` (shared with the touchpad: bounded waits, no slow resets), `drivers/kbd.c` (device `kbd0`, IRQ 1, scancode set 1 → `struct key_event` in `kernel/input.h`, US layout, non-blocking `read`). Brought in hardware IRQs: `kernel/irq.c` (8259 PICs remapped to 32–47, lines masked until a driver registers, spurious IRQ 7/15 handled); after boot the kernel idles with interrupts on and logs key presses. Tested by typing into QEMU (`sendkey`) and VirtualBox (`keyboardputstring`)
-   - [ ] Real-hardware check: type on the EeePC and see `kbd: key ...` lines appear
+   - [x] Real-hardware check (2026-09-29): typed keys appear as `kbd: key ...` lines
 3. [x] Touchpad/mouse driver (PS/2 aux port on the same i8042 — basic 3-byte PS/2 packets are enough; Elantech/Synaptics extended modes are a Non-Goal). Needed by Phase 2's cursor — `drivers/mouse.c` (device `mouse0`, IRQ 12, `struct mouse_event` in `kernel/input.h`, screen convention dy > 0 = down, packet resync + overflow discard). The idle loop tracks a pointer position and logs clicks and (rate-limited) movement. Tested by moving/clicking QEMU's mouse through the monitor; binds in VirtualBox
-   - [ ] Real-hardware check: move and tap on the EeePC touchpad and see `mouse: (x, y) buttons ...` lines
+   - [x] Real-hardware check (2026-09-29): touchpad movement and both buttons appear as `mouse: ...` lines
 4. [x] ~~Disk/storage driver, if needed at this stage~~ — not needed: apps ship in a read-only ramdisk in the boot image (decided 2026-09-27, see `docs/NON-GOALS.md`)
 
 Each driver: implements full `driver_t` interface, tested in isolation, fails loudly not silently.
@@ -79,13 +79,13 @@ Each driver: implements full `driver_t` interface, tested in isolation, fails lo
 ---
 
 ## Phase 1 Done Criteria
-All of Phase 1's code is done and tested in QEMU and VirtualBox (2026-09-27). The boxes below wait for the EeePC run in `docs/HARDWARE-TEST.md`, which covers every real-hardware check listed above in one session.
+All of Phase 1's code is done and tested in QEMU and VirtualBox (2026-09-27), and on the EeePC 1000HE (2026-09-29, `docs/HARDWARE-TEST.md`). One box remains: the display resolution.
 
-- [ ] Kernel boots, reaches "ready" state, with per-phase timing logged (measured from bootloader entry)
-- [ ] PCI enumeration prints detected devices independent of any driver
-- [ ] Driver registry works — display, keyboard, and touchpad drivers registered and callable
-- [ ] Paging + ring separation active — user/kernel mode actually enforced *(done in QEMU + VirtualBox; tick after the EeePC run of `build/test-user/litekernx.img` stays navy)*
-- [ ] A ring 3 test stub successfully makes a syscall and returns, and a bad pointer from ring 3 is rejected rather than crashing the kernel *(same)*
-- [ ] No known broken/half-finished features present — if it's not done, it's not in this build
+- [x] Kernel boots, reaches "ready" state, with per-phase timing logged (measured from bootloader entry) — EeePC: **ready at 179 ms** (budget 1000 ms)
+- [x] PCI enumeration prints detected devices independent of any driver — EeePC: 17 devices, 5 buses
+- [x] Driver registry works — display, keyboard, and touchpad drivers registered and callable — EeePC: `fb0`, `kbd0`, `mouse0` bound; `com1 FAILED (ENODEV)` as expected (no UART)
+- [x] Paging + ring separation active — user/kernel mode actually enforced — EeePC (2026-09-29): ring 3 reading kernel memory and writing through null killed by #PF, port I/O and `cli` killed by #GP, kernel carried on
+- [x] A ring 3 test stub successfully makes a syscall and returns, and a bad pointer from ring 3 is rejected rather than crashing the kernel — EeePC: `selftest: user 12/12 passed`, all six bad-pointer kinds got -EFAULT, 100 runs with no frame leak
+- [ ] No known broken/half-finished features present — if it's not done, it's not in this build — **open: the display runs at 800×600 (stretched on the 1024×600 panel) because the video BIOS has no 1024×600 mode. Must be fixed or consciously accepted before Phase 2 (a GUI laid out for the wrong resolution is the kind of drift X exists to avoid)**
 
 **Do not start Phase 2 (GUI) until every box above is checked.**

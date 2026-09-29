@@ -27,7 +27,8 @@ VBE_INFO        equ 0x3000          ; 512-byte VBE controller info scratch
 VBE_MODE_INFO   equ 0x3200          ; 256-byte VBE mode info scratch
 
 ; Layout checks against boot/bootinfo.h (assembly fails if they drift).
-    times -(bi_size != 96) db 0
+    times -(bi_size != 160) db 0
+    times -(vme_size != VBE_MODE_ENTRY_SIZE) db 0
     times -(kh_size != 24) db 0
 
     dd 'LKX2'                       ; stage 1 checks this, then jumps to entry
@@ -39,9 +40,9 @@ entry:
     mov [tsc_stage2 + 4], edx
     call serial_init
 
-    ; boot_info: zero it (and the mmap area after it), then fill in basics.
+    ; boot_info: zero it (and the mmap and VBE mode areas after it), then fill in basics.
     mov di, BOOT_INFO_ADDR
-    mov cx, (BOOT_MMAP_ADDR + BOOT_MMAP_MAX * E820_ENTRY_SIZE - BOOT_INFO_ADDR) / 2
+    mov cx, (BOOT_VBE_MODES_ADDR + BOOT_VBE_MODES_MAX * VBE_MODE_ENTRY_SIZE - BOOT_INFO_ADDR) / 2
     xor ax, ax
     rep stosw
     mov dword [BOOT_INFO_ADDR + bi.magic], BOOT_INFO_MAGIC
@@ -306,6 +307,7 @@ set_vbe_mode:
     jne .none
     cmp word [VBE_INFO + 4], 0x0200 ; linear framebuffers need VBE 2.0
     jb .none
+    call record_vbe_info
 
     lfs si, [VBE_INFO + 14]         ; far pointer to the mode list
     mov word [best_mode], 0xffff
@@ -321,6 +323,7 @@ set_vbe_mode:
     int 0x10
     cmp ax, 0x004f
     jne .next
+    call record_vbe_mode
     mov ax, [VBE_MODE_INFO]         ; attributes: supported, graphics, LFB
     and ax, 0x0091
     cmp ax, 0x0091
@@ -367,7 +370,7 @@ set_vbe_mode:
     int 0x10
     cmp ax, 0x004f
     jne .none
-    mov bx, cx
+    mov bx, [best_mode]             ; not CX: the BIOS needn't preserve it
     or bx, 0x4000                   ; use the linear framebuffer
     mov ax, 0x4f02
     int 0x10
@@ -389,6 +392,52 @@ set_vbe_mode:
 .none:
     mov si, msg_vbe
     jmp fail
+
+; Record the controller info for the kernel's log: version, video memory and
+; the BIOS's name string (copied, since it may live in the scratch buffer).
+record_vbe_info:
+    movzx eax, word [VBE_INFO + 4]
+    mov [BOOT_INFO_ADDR + bi.vbe_version], eax
+    movzx eax, word [VBE_INFO + 18] ; in 64 KiB units
+    shl eax, 6
+    mov [BOOT_INFO_ADDR + bi.vbe_mem_kb], eax
+    mov dword [BOOT_INFO_ADDR + bi.vbe_modes_addr], BOOT_VBE_MODES_ADDR
+    push ds
+    mov di, BOOT_INFO_ADDR + bi.vbe_oem     ; ES = 0; area already zeroed
+    mov cx, VBE_OEM_MAX - 1
+    lds si, [VBE_INFO + 6]          ; far pointer to the OEM string
+.copy:
+    lodsb
+    test al, al
+    jz .done
+    stosb
+    loop .copy
+.done:
+    pop ds
+    ret
+
+; Append the mode just described in VBE_MODE_INFO to the boot_info mode list.
+record_vbe_mode:
+    mov eax, [BOOT_INFO_ADDR + bi.vbe_modes_count]
+    cmp eax, BOOT_VBE_MODES_MAX
+    jae .full
+    imul di, ax, VBE_MODE_ENTRY_SIZE
+    add di, BOOT_VBE_MODES_ADDR
+    mov ax, [cur_mode]
+    mov [di + vme.mode], ax
+    mov ax, [VBE_MODE_INFO + 0x12]
+    mov [di + vme.width], ax
+    mov ax, [VBE_MODE_INFO + 0x14]
+    mov [di + vme.height], ax
+    mov al, [VBE_MODE_INFO + 0x19]
+    mov [di + vme.bpp], al
+    mov al, [VBE_MODE_INFO + 0x1b]
+    mov [di + vme.model], al
+    mov ax, [VBE_MODE_INFO]
+    mov [di + vme.attributes], ax
+    inc dword [BOOT_INFO_ADDR + bi.vbe_modes_count]
+.full:
+    ret
 
 ; --- 6. protected mode --------------------------------------------------------
 

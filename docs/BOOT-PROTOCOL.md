@@ -55,8 +55,8 @@ Stage 2 runs these steps in order:
 | A20 | Enabled |
 | Video | VBE graphics mode, described in `boot_info.fb_*` |
 
-**`struct boot_info`** (version 2, 96 bytes) holds the following. See `boot/bootinfo.h` for the exact layout.
-- Its magic and version. Version 2 added `font_addr`.
+**`struct boot_info`** (version 3, 160 bytes) holds the following. See `boot/bootinfo.h` for the exact layout.
+- Its magic and version. Version 2 added `font_addr`, and version 3 added the VBE report.
 - The boot drive and flags. `BI_FLAG_FB` means the framebuffer fields are valid. `BI_FLAG_MMAP_TRUNCATED` means the BIOS reported more than 32 memory-map entries.
 - 5 TSC marks: stage 1 entry (T0), stage 2 entry, kernel loaded, VBE mode set, and kernel entry. The kernel converts them to ms once it has calibrated the TSC.
 - The E820 map's address and entry count.
@@ -64,7 +64,9 @@ Stage 2 runs these steps in order:
 - The kernel's start address and `mem_end`.
 - `font_addr`: the physical address of the video BIOS's 8×16 font (256 glyphs × 16 bytes, in ROM below 1 MiB), from `int 10h AX=1130h BH=06h`. It's 0 if the BIOS didn't provide one, in which case the kernel has no on-screen console. This lookup can't fail the boot.
 
-Page 0 (which holds `boot_info` and the E820 map) is unmapped once the kernel turns paging on, so the kernel copies both first.
+- The VBE report: the BIOS's VBE version, its video memory, its name (OEM) string (copied, 48 bytes max), and the address and count of `struct vbe_mode_entry` records at `0x0A00`. There's one record for every mode the BIOS described (up to 64), until the walk stops at a 1024×600 match or the list ends.
+
+Page 0 (which holds `boot_info`, the E820 map and the VBE mode list) is unmapped once the kernel turns paging on, so the kernel copies both first.
 
 ## Failures
 Every stage **fails loudly** instead of guessing. It prints `LKX stage<n>: <reason>` to the screen, mirrors it to COM1 and halts. Once the VBE mode is set, only COM1 shows these messages, but no failure paths exist after that point.
@@ -86,8 +88,9 @@ Every stage **fails loudly** instead of guessing. It prints `LKX stage<n>: <reas
 |---|---|
 | `0x00000–0x004FF` | IVT + BIOS data area (don't touch) |
 | `0x00500–0x00507` | T0 TSC (stage 2 copies it into `boot_info`) |
-| `0x00600–0x0065B` | `struct boot_info` |
+| `0x00600–0x0069F` | `struct boot_info` |
 | `0x00700–0x009FF` | E820 entries (32 × 24 bytes) |
+| `0x00A00–0x00CFF` | VBE mode list (64 × 12 bytes) |
 | `0x03000–0x032FF` | VBE info scratch (stage 2 only) |
 | `0x07000–0x07BFF` | Bootloader stack. The kernel's entry `ESP` points at its top. |
 | `0x07C00–0x07DFF` | Stage 1 (free once stage 2 is running) |

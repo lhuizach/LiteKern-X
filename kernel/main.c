@@ -16,6 +16,7 @@
 #include "kernel/status.h"
 #include "kernel/string.h"
 #include "kernel/timing.h"
+#include "kernel/vbe.h"
 #include "kernel/vmm.h"
 
 void kmain(uint32_t magic, const struct boot_info *handoff) __attribute__((noreturn));
@@ -33,6 +34,7 @@ void selftest_user_run(void);
  * (so null pointers fault): keep the kernel's own copy. */
 static struct boot_info boot_info;
 static struct e820_entry boot_mmap[BOOT_MMAP_MAX];
+static struct vbe_mode_entry boot_vbe_modes[BOOT_VBE_MODES_MAX];
 
 static const struct boot_info *keep_boot_info(uint32_t magic, const struct boot_info *handoff)
 {
@@ -47,6 +49,13 @@ static const struct boot_info *keep_boot_info(uint32_t magic, const struct boot_
     memcpy(boot_mmap, (const void *)handoff->mmap_addr,
            handoff->mmap_count * sizeof(struct e820_entry));
     boot_info.mmap_addr = (uint32_t)boot_mmap;
+    if (handoff->vbe_modes_count > BOOT_VBE_MODES_MAX)
+        boot_info.vbe_modes_count = BOOT_VBE_MODES_MAX;
+    if (handoff->vbe_modes_addr)
+        memcpy(boot_vbe_modes, (const void *)handoff->vbe_modes_addr,
+               boot_info.vbe_modes_count * sizeof(struct vbe_mode_entry));
+    boot_info.vbe_modes_addr = (uint32_t)boot_vbe_modes;
+    boot_info.vbe_oem[VBE_OEM_MAX - 1] = '\0';
     return &boot_info;
 }
 
@@ -203,10 +212,14 @@ void kmain(uint32_t magic, const struct boot_info *handoff)
      * time spent printing (slow over serial in the VMs). */
     boot_report(ready);
     memmap_report(bi);
+    vbe_report(bi);
     vmm_report();
     pci_report();
     device_report();
 
+#ifdef LKX_DIAG_VBIOS
+    vbios_diag(bi);
+#endif
 #ifdef LKX_SELFTEST_DRIVERS
     selftest_drivers_run();
 #endif

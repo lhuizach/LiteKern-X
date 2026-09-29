@@ -47,3 +47,8 @@ These are first guesses. **Replace them with real measurements as soon as Phase 
 | 2026-09-27 | kernel entry | VirtualBox 7.2.8, 1024×600 — not authoritative | 41 ms | bootloader 1, vbe 26, kernel_early 13 |
 | 2026-09-27 | §3 hw detection (logging excluded) | QEMU (TCG) — not authoritative | 45 ms | bootloader 14, vbe 5, kernel_early 23, pci 0, first_frame 1 |
 | 2026-09-27 | §3 hw detection (logging excluded) | VirtualBox 7.2.8, 1024×600 — not authoritative | 115 ms | bootloader 3, vbe 73, kernel_early 11, pci 3, first_frame 22 |
+| **2026-09-29** | **Phase 1 complete (`d875977`)** | **EeePC 1000HE (real), 800×600 (see note)** | **179 ms** | **bootloader 16, vbe 73, kernel_early 10, paging 2, pci 0, drivers 39, first_frame 36.** First authoritative measurement: 18% of the budget. TSC 1662 MHz. |
+
+Every phase is inside its allocation. Worth knowing:
+- `drivers` (39 ms) is almost entirely the PS/2 keyboard and touchpad answering commands. Real PS/2 devices take milliseconds to ACK, while QEMU answers instantly.
+- `vbe` (73 ms) is the video BIOS walking its mode list. It's the biggest single cost.

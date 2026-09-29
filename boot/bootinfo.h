@@ -8,7 +8,9 @@
 #include <stddef.h>
 
 #define BOOT_INFO_MAGIC   0x42584b4cu   /* 'LKXB' as nasm stores it */
-#define BOOT_INFO_VERSION 2u    /* 2: adds font_addr */
+#define BOOT_INFO_VERSION 3u    /* 2: adds font_addr; 3: adds the VBE report */
+#define BOOT_VBE_MODES_MAX 64u
+#define VBE_OEM_MAX 48u
 #define KERNEL_MAGIC      0x4b584b4cu   /* 'LKXK' */
 #define KERNEL_VERSION    1u
 
@@ -51,6 +53,22 @@ struct boot_info {
     uint32_t kernel_start;
     uint32_t kernel_end;
     uint32_t font_addr;         /* video BIOS 8x16 font: 256 glyphs x 16 bytes, 0 if none */
+    uint32_t vbe_version;       /* BCD, e.g. 0x0300 = VBE 3.0 */
+    uint32_t vbe_mem_kb;        /* video memory the BIOS reports */
+    uint32_t vbe_modes_addr;    /* struct vbe_mode_entry[vbe_modes_count], in page 0 */
+    uint32_t vbe_modes_count;
+    char vbe_oem[VBE_OEM_MAX];  /* the video BIOS's name, NUL-terminated, truncated */
+} __attribute__((packed));
+
+/* One VBE mode as the video BIOS described it. Stage 2 records every mode it
+ * got an answer for, until its walk stops at a 1024x600 match or the list ends. */
+struct vbe_mode_entry {
+    uint16_t mode;
+    uint16_t width, height;
+    uint8_t bpp;
+    uint8_t model;              /* 4 packed pixel, 6 direct colour */
+    uint16_t attributes;        /* bit 0 supported, 4 graphics, 7 linear framebuffer */
+    uint16_t reserved;
 } __attribute__((packed));
 
 /* First bytes of the kernel image on disk. */
@@ -69,7 +87,10 @@ _Static_assert(offsetof(struct boot_info, mmap_addr) == 56, "boot_info layout");
 _Static_assert(offsetof(struct boot_info, fb_addr) == 64, "boot_info layout");
 _Static_assert(offsetof(struct boot_info, kernel_end) == 88, "boot_info layout");
 _Static_assert(offsetof(struct boot_info, font_addr) == 92, "boot_info layout");
-_Static_assert(sizeof(struct boot_info) == 96, "boot_info layout");
+_Static_assert(offsetof(struct boot_info, vbe_version) == 96, "boot_info layout");
+_Static_assert(offsetof(struct boot_info, vbe_oem) == 112, "boot_info layout");
+_Static_assert(sizeof(struct boot_info) == 160, "boot_info layout");
+_Static_assert(sizeof(struct vbe_mode_entry) == 12, "vbe_mode_entry layout");
 _Static_assert(sizeof(struct kernel_header) == 24, "kernel_header layout");
 
 #endif

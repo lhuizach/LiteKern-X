@@ -9,11 +9,12 @@ From PowerShell in the project folder:
 ```
 wsl make usb
 ```
-This creates two 1 MiB images in `build\usb\`:
+This creates three 1 MiB images in `build\usb\`:
 | Image | What it's for |
 |---|---|
 | `litekernx.img` | The normal boot: bootloader, kernel, drivers, on-screen log, keyboard and touchpad |
 | `litekernx-ring3-test.img` | The same kernel plus the ring 3 self-test (12 checks of paging, syscalls and fault isolation) |
+| `litekernx-vbios-diag.img` | The same kernel plus a read-only dump of the video BIOS (§4C) |
 
 ## 2. Write an image to the USB stick
 Use [Rufus](https://rufus.ie) (Windows, portable) or [balenaEtcher](https://etcher.balena.io):
@@ -46,6 +47,17 @@ Write this image to the stick and boot it the same way.
 | Check | Expected | Roadmap box |
 |---|---|---|
 | Screen colour | **Navy**, with `selftest: user 12/12 passed` near the end. Red means a check failed: photograph it. | Phase 1 Done: paging + rings, ring 3 syscall + bad pointer |
+
+### C. Video BIOS diagnostic (`litekernx-vbios-diag.img`), for the 1024×600 fix
+The EeePC's video BIOS has no 1024×600 mode, so X currently runs at a stretched 800×600. This image changes nothing. It only reads and prints what the fix (patching the BIOS mode table, like `915resolution`) needs.
+
+Write it to the stick, boot it, then press **End** and **PgUp** until you reach the line `diag: vbe modes`. Photograph from there down to `kbd: ready`, making sure every line is sharp and readable. It's about 30–40 lines, so it takes 2 photos.
+| Line(s) | What it tells me |
+|---|---|
+| `vbe: VBE 3.0, '...'` | The video BIOS's name and version, and which 32 bpp modes it offers |
+| `diag: vbe modes ...` | Every mode, as mode number, size, colour depth, type and flags |
+| `diag: host ... pam 90-96 = ...` | Whether the BIOS copy in RAM can be written (the patch needs that) |
+| `diag: mode table at +....` and the `res +....` lines | The Intel table to patch, and the timing record for each resolution |
 
 ## 5. Send back
 The photos (or just the answers to the table). I'll tick the roadmap boxes, fill in the measurements table in `docs/BOOT-BUDGET.md`, and fix anything the real hardware disagrees with before Phase 2.

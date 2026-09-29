@@ -114,7 +114,8 @@ check "reports the BIOS memory map and display mode" \
     '^mem 0x0000000000000000-0x[0-9a-f]{16} usable$' \
     '^mem 0x0000000000100000-0x[0-9a-f]{16} usable$' \
     '^mem: 10[0-9]{2} MiB usable in [0-9]+ regions$' \
-    '^fb 1024x768x32 pitch=4096 at 0x[0-9a-f]{8}$'
+    '^fb 1024x768x32 pitch=4096 at 0x[0-9a-f]{8}$' \
+    "^vbe: VBE 3\.0, 'SeaBIOS VBE\(C\) 2011', 16384 KiB, [0-9]+ modes seen; 32 bpp LFB:.* 800x600 1024x768"
 
 check "turns on paging with the planned layout" \
     '^mm: paging on; null page unmapped; kernel code read-only 0x00100000-0x[0-9a-f]{8}$' \
