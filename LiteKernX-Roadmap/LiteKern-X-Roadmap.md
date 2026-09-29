@@ -29,7 +29,7 @@ This is the single biggest behavioral change from v1 to X.
 Before any code:
 - [ ] New repo (or clean branch) for X. Do not import v1 code wholesale — port logic deliberately, piece by piece, only when a stage needs it.
 - [ ] Write a one-page **Non-Goals** list: features from v1 you are explicitly NOT building yet (e.g. GUI polish, extra drivers, extra apps). Revisit only after MVP boots stable.
-- [ ] Set up a boot-time budget: **target boot ≤ 1000ms** (down from v1's ~5000ms). Every stage below should be built with this budget in mind, not fixed at the end.
+- [ ] Set up a boot-time budget: **target boot ≤ 1000ms** (down from v1's ~5000ms). Every stage below should be built with this budget in mind, not fixed at the end. *(Changed 2026-09-29: now ≤ 5 s to the desktop with visible progress, hard ceiling 10 s — see `docs/BOOT-BUDGET.md`.)*
 
 **Done when:** repo exists, Non-Goals list is written, boot budget is documented.
 
@@ -106,7 +106,7 @@ This is the part of v1 that was already in good shape — port deliberately, don
 
 ## Stage 6 — MVP Boot Test
 - [ ] Full boot: bootloader → kernel → drivers → rendering → one KERN86 app running
-- [ ] Boot time measured against the Stage 0 budget (≤1000ms target)
+- [ ] Boot time measured against the budget in `docs/BOOT-BUDGET.md` (≤ 5 s to the desktop, ceiling 10 s)
 - [ ] No known broken/half-finished features present at all — if it's not done, it's not in this build
 
 **Done when:** X boots clean, boots fast (or you know exactly why not, with data from your Stage 1 instrumentation), and does only what it currently claims to do.

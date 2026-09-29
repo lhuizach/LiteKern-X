@@ -35,7 +35,7 @@ Writing an image **erases the whole stick**. Double-check you've selected the US
 | 1 | Screen after boot | **Navy background with the log**. Red means a panic (photograph it). Black means it didn't reach the kernel: look for an `LKX stage1:` / `LKX stage2:` message. | Phase 1 Done: boots to ready |
 | 2 | Press **Home** (Fn+←), photograph, then **PgDn** (Fn+↓) and photograph until the end | The whole log, top to bottom | — |
 | 3 | `fb ...` line | `fb 1024x600x32 ...`, which means stage 2 found the panel's native mode | §2 VBE mode |
-| 4 | `[boot]` lines | The per-phase times and `ready t=...`. These are the **first real boot-time numbers** against the 1000 ms budget. | §2, boot budget |
+| 4 | `[boot]` lines | The per-phase times and `ready t=...`. These are the real boot-time numbers against the budget in `docs/BOOT-BUDGET.md`. | §2, boot budget |
 | 5 | `pci ...` lines | Intel `8086:27xx` devices (945GSE/ICH7) and the Atheros Ethernet. This is the real device list. | §3 |
 | 6 | `dev ...` lines | `fb0`, `kbd0` and `mouse0` **bound**. `com1 ... FAILED (ENODEV)` is **correct**: the EeePC has no serial port. | §4, §6 |
 | 7 | Type some letters, Shift+letters and Caps Lock | A `kbd: key ...` line per key | §6.2 |

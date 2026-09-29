@@ -22,7 +22,7 @@ Goal: take the working-but-plain GUI/apps from Phase 2 and make them feel finish
 - [ ] Consistent app chrome/UI conventions across apps
 
 ## 4. Final stability + performance pass (~1.5 hrs)
-- [ ] Re-check boot time against the ≤1000ms Phase 1 target (bootloader entry → first frame, BIOS POST excluded) — confirm no regression from GUI/animation work
+- [ ] Re-check boot time against `docs/BOOT-BUDGET.md`: ≤ 5 s bootloader entry → desktop, hard ceiling 10 s, BIOS POST excluded, with visible progress the whole way (the budget was ≤ 1000 ms until 2026-09-29)
 - [ ] Full run-through: boot → GUI → open apps → close apps → shutdown, no crashes
 - [ ] Fix anything found — do not carry known bugs into Phase 4
 

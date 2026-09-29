@@ -8,7 +8,7 @@ Goal: a booting kernel with a working driver layer and basic hardware detection 
 ## 1. Project setup (~30 min)
 - [x] New repo/branch for X — don't import v1 code wholesale
 - [x] One-page Non-Goals list (features you're explicitly NOT doing yet) — `docs/NON-GOALS.md`
-- [x] Boot-time budget documented: **target ≤ 1000ms** (v1 was ~5000ms) — `docs/BOOT-BUDGET.md`
+- [x] Boot-time budget documented: **target ≤ 1000ms** (v1 was ~5000ms) — `docs/BOOT-BUDGET.md` *(relaxed 2026-09-29 to ≤ 5 s to the desktop, ceiling 10 s)*
 - [x] QEMU dev VM approximating the EeePC (`vm/qemu.sh`), verified by `make smoke` passing
   - **Measured from bootloader entry → first frame / "ready" state.** BIOS POST on the EeePC is outside our control and is excluded (record it separately with a stopwatch for reference, but don't count it against the budget)
   - The VBE mode set happens in the bootloader (real mode), so its cost lands in the bootloader phase timing — expect it to be one of the larger line items

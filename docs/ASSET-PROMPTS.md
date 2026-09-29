@@ -54,7 +54,7 @@ Use **only** these 8 colours, plus transparency:
 | Busy cursor | 32×32 × 4 frames | `assets/cursors/wait-0.png` … `wait-3.png` | Played at 150 ms per frame |
 | App icons | 48×48 master | `assets/icons/apps/<app>.svg` | Also used at 32 and 16. Hand-tune a 16×16 if the small one looks muddy (§4.3). |
 | UI glyphs | 16×16 | `assets/icons/ui/<name>.svg` | Title-bar buttons, checkboxes and similar |
-| Logo (optional) | 128×128 | `assets/logo.svg` | For the Phase 4 website. It is **not** a boot splash, since the boot budget is ≤1000 ms. |
+| Logo (optional) | 128×128 | `assets/logo.svg` | For the Phase 4 website, and it can be the boot splash (the boot budget is now ≤ 5 s, see `docs/BOOT-BUDGET.md`). |
 
 ---
 
@@ -304,7 +304,7 @@ crossing bars: one bar sky (#48A6E8), the other mist (#C8D0DC). Where they cross
 sky bar is on top, with a 2px navy gap separating the bars so it reads as layered.
 Nothing else: no wordmark, no text, no shadows.
 ```
-> The logo is the one place where an "X" letterform is allowed, because it's a geometric mark, not text in a font. It's not shown at boot, since the 1000 ms boot budget has no room for a splash.
+> The logo is the one place where an "X" letterform is allowed, because it's a geometric mark, not text in a font. It can also be shown at boot as the splash, now that the boot budget (≤ 5 s) has room for one.
 
 ---
 
