@@ -288,18 +288,31 @@ check "widgets: button, list, entry, dialog (states, input, results)" \
     '^selftest: widgets ([0-9]+)/\1 passed$' \
     '!selftest: FAIL|PANIC'
 
-# Files, driven from the keyboard: Ctrl+N creates, F2 renames, Delete
-# deletes, each through its dialog; a duplicate name is refused.
-KEYS="move:-60,344 press:1 release ctrl-n h i ret f2 backspace backspace b y e ret ctrl-n b y e ret esc delete ret" \
-KEYS_DONE='^files: delete bye' SCREEN="corner=" \
-    boot_until build/litekernx.img "$done_re" 30
-check "Files: create, rename and delete through the dialogs" \
-    '^desktop: open Files$' \
+# Files on the real FAT32 partition, driven from the keyboard, on a scratch
+# copy of the image: Ctrl+N creates, F2 renames (a duplicate name is refused),
+# Enter opens a folder, Backspace goes back up, Delete deletes. Afterwards
+# Linux's own tools check the partition in the image file.
+mkdir -p build/test-files
+cp build/litekernx.img build/test-files/disk.img
+KEYS="move:-60,344 press:1 release ctrl-n h i ret f2 backspace backspace b y e ret ctrl-n b y e ret esc home ret ctrl-n n e w dot t x t ret backspace home down down delete ret" \
+KEYS_DONE='^files: delete bye' boot_until build/test-files/disk.img "$done_re" 40
+dd if=build/test-files/disk.img of=build/test-files/fat.img bs=512 skip=2048 status=none
+out+=$'\n'$(fsck.fat -n build/test-files/fat.img >/dev/null 2>&1 && echo "fsck: clean" || echo "fsck: ERRORS")
+out+=$'\n'$(MTOOLS_SKIP_CHECK=1 mdir -/ -b -i build/test-files/fat.img ::/ 2>/dev/null | sed 's/^/mtools: /')
+check "Files: create, rename, delete and folders on the FAT32 partition (checked by fsck.fat)" \
+    '^storage: boot0 partition at 2048 \(FAT32\): FAT32, read/write$' \
+    '^files: open Boot disk \(LITEKERNX\)$' \
     '^files: create hi$' \
     '^files: rename hi -> bye$' \
+    '^files: open folder Documents$' \
+    '^files: create new\.txt$' \
     '^files: delete bye$' \
-    '!files: create bye' \
-    '!PANIC'
+    '^fsck: clean$' \
+    '^mtools: ::/Documents/new\.txt$' \
+    '^mtools: ::/Documents/notes\.txt$' \
+    '^mtools: ::/Welcome to LiteKern X\.txt$' \
+    '!mtools: ::/(hi|bye)$' \
+    '!files: create bye|^files: .* failed|PANIC'
 
 # The Log app shows the log below the top bar and its header bar (30 + 46 px).
 KEYS="move:0,344 press:1 release a b c d e f g h i j k l m home" KEYS_DONE="^kbd: key 0x026 'l'" \

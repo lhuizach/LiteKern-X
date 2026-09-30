@@ -9,6 +9,7 @@
 #define ENOMEM  12      /* out of memory / table full */
 #define EFAULT  14      /* bad address (e.g. a user pointer the kernel won't touch) */
 #define EBUSY   16      /* device or resource busy */
+#define EEXIST  17      /* already exists */
 #define ENODEV  19      /* no such device, or device not usable */
 #define EINVAL  22      /* invalid argument */
 #define ENOSPC  28      /* no space left (a buffer, later a disk) */

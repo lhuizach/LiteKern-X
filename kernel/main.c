@@ -20,6 +20,7 @@
 #include "kernel/printk.h"
 #include "kernel/serial.h"
 #include "kernel/status.h"
+#include "kernel/storage.h"
 #include "kernel/string.h"
 #include "kernel/timing.h"
 #include "kernel/vbe.h"
@@ -281,5 +282,6 @@ void kmain(uint32_t magic, const struct boot_info *handoff)
     *(volatile uint8_t *)(uintptr_t)kmain = 0xcc;
 #endif
 
+    storage_init();         /* the disks Files can open (reads each partition table) */
     idle(bi);
 }

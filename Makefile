@@ -26,6 +26,13 @@ KERNEL_OBJS := $(patsubst %.c,$(BUILD)/%.o,$(filter %.c,$(KERNEL_SRCS))) \
                $(patsubst %.asm,$(BUILD)/%.asm.o,$(filter %.asm,$(KERNEL_SRCS))) \
                $(BUILD)/gen/cursors.o $(BUILD)/gen/icons.o
 
+# The FAT32 partition for files (Phase 2 section 5a): the normal image gets
+# one, starting at 1 MiB; test images (other BUILD dirs) don't, to stay small.
+# Its starting contents are assets/disk/. FAT32 needs at least 65525
+# clusters, so with 512-byte clusters 64 MiB is about the smallest sensible.
+FAT_MB    ?= $(if $(filter build,$(strip $(BUILD))),64,0)
+FAT_START := 2048
+
 # Cursors: assets/cursors.json + PNGs -> C, at build time (docs/ASSET-PROMPTS.md §3).
 CURSOR_ASSETS := assets/cursors.json $(wildcard assets/cursors/*.png)
 # App icons: assets/icons.json + 48x48 PNGs -> C (docs/ASSET-PROMPTS.md §2).
@@ -37,7 +44,7 @@ WALLPAPER ?= assets/wallpapers/crossing.png
 # kernels by tests/kernel/user_programs.asm.
 USER_TEST_BINS := $(patsubst %.asm,$(BUILD)/%.user.bin,$(wildcard tests/kernel/user/*.asm))
 
-.PHONY: all run debug test test-boot test-kernel smoke smoke-gui check-tools clean \
+.PHONY: all run debug test test-boot test-fat test-kernel smoke smoke-gui check-tools clean \
         vbox-create vbox vbox-test usb
 
 all: $(IMAGE)
@@ -117,11 +124,40 @@ $(BUILD)/stage1.bin: boot/stage1.asm $(BUILD)/stage2.bin $(BUILD)/kernel.bin
 	@s2=$$(( $$(stat -c %s $(BUILD)/stage2.bin) / 512 )); \
 	k=$$(( ($$(stat -c %s $(BUILD)/kernel.bin) + 511) / 512 )); \
 	echo "nasm stage1 (stage 2 = $$s2 sectors, kernel = $$k sectors)"; \
-	$(NASM) -DSTAGE2_SECTORS=$$s2 -DDISK_SECTORS=$$((1 + s2 + k)) -o $@ $<
+	$(NASM) -DSTAGE2_SECTORS=$$s2 -DDISK_SECTORS=$$((1 + s2 + k)) \
+		-DFAT_START=$(FAT_START) -DFAT_SECTORS=$$(( $(FAT_MB) * 2048 )) -o $@ $<
 
-$(IMAGE): $(BUILD)/stage1.bin $(BUILD)/stage2.bin $(BUILD)/kernel.bin
-	cat $^ > $@
+$(IMAGE): $(BUILD)/stage1.bin $(BUILD)/stage2.bin $(BUILD)/kernel.bin $(if $(filter-out 0,$(FAT_MB)),$(BUILD)/fat.img)
+	cat $(BUILD)/stage1.bin $(BUILD)/stage2.bin $(BUILD)/kernel.bin > $@
 	truncate -s %512 $@
+	@if [ $(FAT_MB) -gt 0 ]; then \
+		if [ $$(stat -c %s $@) -gt $$(( $(FAT_START) * 512 )) ]; then \
+			echo "error: the boot area overlaps the FAT32 partition"; rm -f $@; exit 1; fi; \
+		truncate -s $$(( $(FAT_START) * 512 )) $@; \
+		cat $(BUILD)/fat.img >> $@; \
+	fi
+
+# The FAT32 filesystem, made with Linux's own tools (dosfstools, mtools);
+# --invariant and a fixed volume ID keep it the same on every build.
+# assets/disk's file names may have spaces, which make can't take as
+# prerequisites: depend on a list of their checksums, rewritten only when it
+# changes.
+$(BUILD)/gen/disk-files.md5: FORCE
+	@mkdir -p $(dir $@)
+	@find assets/disk -type f -exec md5sum {} + 2>/dev/null | sort > $@.new; \
+	cmp -s $@.new $@ && rm -f $@.new || mv $@.new $@
+
+.PHONY: FORCE
+FORCE:
+
+$(BUILD)/fat.img: $(BUILD)/gen/disk-files.md5
+	@mkdir -p $(dir $@)
+	rm -f $@
+	mkfs.fat -C -F 32 -s 1 -S 512 -h $(FAT_START) -n LITEKERNX -i 4c4b5846 --invariant \
+		$@ $$(( $(FAT_MB) * 1024 )) >/dev/null
+	@if [ -d assets/disk ] && [ -n "$$(ls -A assets/disk)" ]; then \
+		MTOOLS_SKIP_CHECK=1 mcopy -s -m -i $@ assets/disk/* ::/; fi
+	@MTOOLS_SKIP_CHECK=1 mmd -i $@ ::/Pictures
 
 run: $(IMAGE)
 	$(QEMU) --image $(IMAGE)
@@ -131,7 +167,12 @@ debug: $(IMAGE)
 
 # --- tests ------------------------------------------------------------------
 
-test: smoke test-boot test-kernel
+test: smoke test-boot test-fat test-kernel
+
+# The FAT32 driver, built for Linux and checked with fsck.fat and mtools.
+test-fat:
+	@bash tests/fat/test-fat.sh
+	@echo
 
 test-boot:
 	@bash tests/boot/test-stage1.sh

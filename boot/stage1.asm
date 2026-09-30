@@ -5,7 +5,8 @@
 ;
 ; Build-time defines (the Makefile passes these):
 ;   STAGE2_SECTORS  size of stage 2 in sectors (1..64)
-;   DISK_SECTORS    total image size in sectors (for the partition entry)
+;   DISK_SECTORS    size of the boot area (MBR + stage 2 + kernel) in sectors
+;   FAT_START, FAT_SECTORS   the FAT32 partition (FAT_SECTORS 0: none)
 
 bits 16
 org 0x7c00
@@ -15,6 +16,10 @@ org 0x7c00
 %endif
 %ifndef DISK_SECTORS
     %error "DISK_SECTORS must be defined"
+%endif
+%ifndef FAT_SECTORS
+    %define FAT_SECTORS 0
+    %define FAT_START 0
 %endif
 %if STAGE2_SECTORS < 1 || STAGE2_SECTORS > 64
     %error "stage 2 must be 1..64 sectors (it loads into 0x8000-0xFFFF in one read)"
@@ -153,6 +158,17 @@ boot_drive db 0
     db 0xfe, 0xff, 0xff
     dd 1
     dd DISK_SECTORS - 1
+%if FAT_SECTORS > 0
+    ; Partition 2: FAT32 (LBA), for files; Windows can open it too.
+    db 0x00
+    db 0xfe, 0xff, 0xff
+    db 0x0c
+    db 0xfe, 0xff, 0xff
+    dd FAT_START
+    dd FAT_SECTORS
+    times 2 * 16 db 0                   ; partitions 3-4 unused
+%else
     times 3 * 16 db 0                   ; partitions 2-4 unused
+%endif
 
     dw 0xaa55

@@ -1,0 +1,5 @@
+Welcome to LiteKern X!
+
+This is the FAT32 partition on your LiteKern X USB stick.
+Files can browse, create, rename and delete files here, and
+Windows can open this partition too.

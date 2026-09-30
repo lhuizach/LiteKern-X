@@ -8,6 +8,7 @@ const char *errno_name(int err)
     case ENOMEM: return "ENOMEM";
     case EFAULT: return "EFAULT";
     case EBUSY:  return "EBUSY";
+    case EEXIST: return "EEXIST";
     case ENODEV: return "ENODEV";
     case EINVAL: return "EINVAL";
     case ENOSPC: return "ENOSPC";
