@@ -30,6 +30,8 @@ KERNEL_OBJS := $(patsubst %.c,$(BUILD)/%.o,$(filter %.c,$(KERNEL_SRCS))) \
 CURSOR_ASSETS := assets/cursors.json $(wildcard assets/cursors/*.png)
 # App icons: assets/icons.json + 48x48 PNGs -> C (docs/ASSET-PROMPTS.md §2).
 ICON_ASSETS := assets/icons.json $(wildcard assets/icons/*.png)
+# The desktop wallpaper, packed into the kernel (docs/ASSET-PROMPTS.md §8).
+WALLPAPER ?= assets/wallpapers/crossing.png
 
 # Ring 3 test programs: flat binaries at USER_BASE, embedded into self-test
 # kernels by tests/kernel/user_programs.asm.
@@ -48,7 +50,14 @@ $(BUILD)/%.o: %.c
 
 $(BUILD)/%.asm.o: %.asm boot/bootinfo.inc
 	@mkdir -p $(dir $@)
-	nasm -f elf32 -I./ -DUSER_BIN_DIR='"$(BUILD)/tests/kernel/user"' -o $@ $<
+	nasm -f elf32 -I./ -DUSER_BIN_DIR='"$(BUILD)/tests/kernel/user"' \
+		-DWALLPAPER_FILE='"$(BUILD)/gen/wallpaper.lkxw"' -o $@ $<
+
+$(BUILD)/kernel/wallpaper_data.asm.o: $(BUILD)/gen/wallpaper.lkxw
+
+$(BUILD)/gen/wallpaper.lkxw: $(WALLPAPER) tools/wallpaper-pack.py tools/lkx_png.py
+	@mkdir -p $(dir $@)
+	python3 tools/wallpaper-pack.py $< $@
 
 $(BUILD)/tests/kernel/user_programs.asm.o: $(USER_TEST_BINS)
 

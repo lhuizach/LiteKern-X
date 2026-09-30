@@ -53,6 +53,10 @@ struct gfx_surface gfx_sub(const struct gfx_surface *s, struct gfx_rect r);
 
 /* Colour a over b at alpha (0..255), e.g. Adwaita's "white at 10%". */
 uint32_t gfx_mix(uint32_t a, uint32_t b, uint32_t alpha);
+/* Blend `colour` at alpha (0..255) over a rounded rectangle: translucent
+ * shapes over a picture, e.g. the dock over the wallpaper. */
+void gfx_blend_round_rect(struct gfx_surface *s, int x, int y, int w, int h, int r,
+                          uint32_t colour, uint32_t alpha);
 /* Blend a rectangle towards black (alpha 0..255): dims what's behind a dialog. */
 void gfx_darken(struct gfx_surface *s, int x, int y, int w, int h, uint32_t alpha);
 

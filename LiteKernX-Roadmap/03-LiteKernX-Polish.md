@@ -31,7 +31,7 @@ A few well-chosen options, like GNOME/libadwaita, not KDE-style "configure every
 - [ ] Theme tokens: `struct theme` (`window_bg`, `view_bg`, `headerbar_bg`, `fg`, `fg_dim`, `accent_bg`, `accent_fg`, `border`, `warning`, `destructive`, plus spacing) behind `theme_get()`; no widget or app hard-codes a colour
 - [ ] Style: Dark (navy) and Light (mist) themes, both built from the `docs/ASSET-PROMPTS.md` palette
 - [ ] Accent colour: 5–6 presets (sky default); changing it only swaps `accent_bg`/`accent_fg`
-- [ ] Wallpaper: a solid colour, plus 3–5 compressed images; measure the `assets` boot phase on the EeePC (`docs/BOOT-BUDGET.md`) — first one made (2026-09-30): `assets/wallpapers/crossing.png` + `crossing-light.png` (1024×600, 155 KB / 96 KB, pass `docs/ASSET-PROMPTS.md` §8)
+- [ ] Wallpaper: a solid colour, plus 3–5 compressed images; measure the `assets` boot phase on the EeePC (`docs/BOOT-BUDGET.md`) — first one made (2026-09-30): `assets/wallpapers/crossing.png` + `crossing-light.png` (1024×600, 155 KB / 96 KB, pass `docs/ASSET-PROMPTS.md` §8). **Showing one wallpaper came forward into Phase 2** (the shell, 2026-09-30: packed into the kernel, unpacked at boot). Left for here: choosing between several (and the light one with the light style), which needs them off the kernel image (the ramdisk) to stay under 448 KiB
 - [ ] Boot splash: the logo (`assets/logo.png`, made 2026-09-30) with a progress bar, or the scrolling boot log; either way, visible progress the whole boot
 - [ ] Proportional anti-aliased font like v1's, replacing the 8×16 bitmap font in the GUI (the console keeps the bitmap font)
 - [ ] Applying a change is one `screen_damage_all()` + present, not a reboot

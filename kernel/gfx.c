@@ -171,6 +171,25 @@ uint32_t gfx_mix(uint32_t a, uint32_t b, uint32_t alpha)
            mix(a >> 8 & 0xff, b >> 8 & 0xff, alpha) << 8 | mix(a & 0xff, b & 0xff, alpha);
 }
 
+void gfx_blend_round_rect(struct gfx_surface *s, int x, int y, int w, int h, int r,
+                          uint32_t colour, uint32_t alpha)
+{
+    if (w <= 0 || h <= 0)
+        return;
+    if (r > w / 2)
+        r = w / 2;
+    if (r > h / 2)
+        r = h / 2;
+    for (int row = 0; row < h; row++) {
+        int dy = row < r ? row : row >= h - r ? h - 1 - row : -1;
+        int in = dy < 0 ? 0 : corner_inset(r, dy);
+        struct gfx_rect c = clip(s, x + in, y + row, w - 2 * in, 1);
+        uint32_t *p = s->px + c.y * s->stride;
+        for (int col = c.x; col < c.x + c.w; col++)
+            p[col] = gfx_mix(colour, p[col], alpha);
+    }
+}
+
 void gfx_darken(struct gfx_surface *s, int x, int y, int w, int h, uint32_t alpha)
 {
     struct gfx_rect r = clip(s, x, y, w, h);

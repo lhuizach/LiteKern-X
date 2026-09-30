@@ -32,6 +32,13 @@ make -s BUILD=build/test-gfx EXTRA_CFLAGS=-DLKX_SELFTEST_GFX EXTRA_KERNEL_SRCS=t
     build/test-gfx/litekernx.img >/dev/null || exit 1
 make -s BUILD=build/test-wm EXTRA_CFLAGS=-DLKX_SELFTEST_WM EXTRA_KERNEL_SRCS=tests/kernel/selftest_wm.c \
     build/test-wm/litekernx.img >/dev/null || exit 1
+# A kernel whose packed wallpaper has one byte damaged: it must notice (the
+# checksum, or inflate's own checks) and fall back to the plain colour.
+make -s BUILD=build/test-wallpaper-bad build/test-wallpaper-bad/gen/wallpaper.lkxw >/dev/null || exit 1
+python3 -c "
+import sys; p = sys.argv[1]; d = bytearray(open(p, 'rb').read())
+d[len(d) // 2] ^= 0x5a; open(p, 'wb').write(bytes(d))" build/test-wallpaper-bad/gen/wallpaper.lkxw
+make -s BUILD=build/test-wallpaper-bad build/test-wallpaper-bad/litekernx.img >/dev/null || exit 1
 make -s BUILD=build/test-widgets EXTRA_CFLAGS=-DLKX_SELFTEST_WIDGETS \
     EXTRA_KERNEL_SRCS=tests/kernel/selftest_widgets.c build/test-widgets/litekernx.img >/dev/null || exit 1
 
@@ -83,7 +90,10 @@ boot_until() {
     rm -f "$log" "$sock"
 }
 
-NAVY=1e3a5f TEXT=c8d0dc RED=801010 WHITE=ffffff DESKTOP=202634
+NAVY=1e3a5f TEXT=c8d0dc RED=801010 WHITE=ffffff
+# The desktop's bottom-right corner: the wallpaper's bottom edge colour (the
+# 1024x600 image is centred on QEMU's 1024x768 screen). PLAIN: no wallpaper.
+DESKTOP=$(sed -n 's/^bottom=//p' build/gen/wallpaper.lkxw.txt) PLAIN=202634
 
 # check NAME: all remaining args are regexes that must each match a line;
 # a regex prefixed with ! must match no line.
@@ -156,8 +166,9 @@ check "binds the COM1, display, keyboard and touchpad drivers" \
     '^dev rtc0 driver=cmos-rtc bound$' \
     '^drivers: 5 registered, 5 devices bound, 0 failed; [0-9]+ PCI devices without a driver$'
 
-check "boots to the desktop (top bar, dock)" \
+check "boots to the desktop (top bar, dock, wallpaper)" \
     '^console: 128x48 characters, video BIOS font at 0x[0-9a-f]{5}$' \
+    '^wallpaper: 1024x600, [0-9]+ KB packed, unpacked and checked in [0-9]+ ms$' \
     "^screen: corner $DESKTOP$" \
     "^screen: has $WHITE in 0,0,120,30: yes$" \
     '^screen: has 3584e4 in 422,698,482,758: yes$' \
@@ -326,6 +337,12 @@ boot_until build/litekernx.img '^shell: clock Fri 1 Jan  00:00.?$|^PANIC: .*[0-9
 check "shell: the clock shows the RTC's date and time, and follows it" \
     '^shell: clock Thu 31 Dec  23:59$' \
     '^shell: clock Fri 1 Jan  00:00$' \
+    '!PANIC'
+
+SCREEN="corner=" boot_until build/test-wallpaper-bad/litekernx.img "$done_re" 20
+check "a damaged wallpaper is caught: plain colour instead, no crash" \
+    '^wallpaper: corrupt ' \
+    "^screen: corner $PLAIN$" \
     '!PANIC'
 
 boot_until build/test-drivers/litekernx.img "$selftest_done_re" 20

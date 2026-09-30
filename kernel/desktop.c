@@ -21,6 +21,7 @@
 #include "kernel/rtc.h"
 #include "kernel/screen.h"
 #include "kernel/theme.h"
+#include "kernel/wallpaper.h"
 #include "kernel/wm.h"
 
 #define GRID_TOP 48         /* gap between the top bar and the grid */
@@ -75,16 +76,16 @@ static int desktop_visible(void)
     return started && !wm_is_open();
 }
 
-/* The background below the top bar: dimmed while the app menu is open,
- * like GNOME's overview. */
-static uint32_t area_bg(void)
-{
-    return grid_open ? gfx_mix(0, T()->desktop_bg, 90) : T()->desktop_bg;
-}
+/* Translucent white over the wallpaper, as alpha out of 255. */
+#define A_DOCK      20      /* the dock: 8% */
+#define A_HOVER     38      /* 15% */
+#define A_PRESSED   64      /* 25% */
+#define A_DIM       90      /* black over the wallpaper while the app menu is open */
 
-static uint32_t dock_bg(void)
+/* The wallpaper, dimmed while the app menu is open (like GNOME's overview). */
+static void background(int x, int y, int w, int h)
 {
-    return gfx_mix(WHITE, area_bg(), 20);
+    wallpaper_draw(x, y, w, h, grid_open ? A_DIM : 0);
 }
 
 /* --- layout -------------------------------------------------------------------- */
@@ -182,6 +183,7 @@ static uint32_t target_bg(int i, uint32_t base)
 }
 
 static void draw_target(int i);
+static void draw_icon(const struct app *a, int x, int y);
 
 /* "Wed 30 Sep  14:05", GNOME's format (24-hour); empty without a clock. */
 static void clock_text(char text[24])
@@ -260,14 +262,30 @@ static void draw_menu(void)
     screen_damage(menu_r.x, menu_r.y, menu_r.w, menu_r.h);
 }
 
+/* The whole dock, items included: it's translucent over the wallpaper, so an
+ * item can't be redrawn on its own without redrawing what's under it. */
 static void draw_dock(void)
 {
+    const struct theme *t = T();
     struct gfx_rect d = dock_rect();
-    gfx_fill_rect(S(), d.x, d.y, d.w, d.h, area_bg());
-    gfx_fill_round_rect(S(), d.x, d.y, d.w, d.h, 18, dock_bg());
-    for (int i = 0; i < ntargets; i++)
-        if (targets[i].kind == T_DOCK || targets[i].kind == T_APPS)
-            draw_target(i);
+    background(d.x, d.y, d.w, d.h);
+    gfx_blend_round_rect(S(), d.x, d.y, d.w, d.h, 18, WHITE, A_DOCK);
+    for (int i = 0; i < ntargets; i++) {
+        struct target *g = &targets[i];
+        if (g->kind != T_DOCK && g->kind != T_APPS)
+            continue;
+        struct gfx_rect r = g->r;
+        int lit = i == pressed ? A_PRESSED : i == hover ? A_HOVER
+                : g->kind == T_APPS && grid_open ? A_HOVER : 0;
+        if (lit)
+            gfx_blend_round_rect(S(), r.x + 2, r.y, r.w - 4, r.h, 12, WHITE, (uint32_t)lit);
+        if (g->kind == T_APPS)          /* nine dots, like GNOME's "Show Apps" */
+            for (int k = 0; k < 9; k++)
+                gfx_fill_circle(S(), r.x + r.w / 2 - 10 + (k % 3) * 10,
+                                r.y + r.h / 2 - 10 + (k / 3) * 10, 3, t->fg);
+        else
+            draw_icon(&builtin_apps[g->app], r.x + (r.w - DOCK_ICON) / 2, r.y + (r.h - DOCK_ICON) / 2);
+    }
     screen_damage(d.x, d.y, d.w, d.h);
 }
 
@@ -277,7 +295,7 @@ static void draw_dock_label(void)
     const struct theme *t = T();
     struct gfx_rect d = dock_rect();
     int band_y = d.y - 8 - FONT_H - 12;
-    gfx_fill_rect(S(), 0, band_y, S()->w, FONT_H + 12, area_bg());
+    background(0, band_y, S()->w, FONT_H + 12);
     if (hover >= 0 && (targets[hover].kind == T_DOCK || targets[hover].kind == T_APPS)) {
         const char *name = targets[hover].kind == T_APPS ? "Show Apps"
                                                          : builtin_apps[targets[hover].app].name;
@@ -331,10 +349,10 @@ static void draw_target(int i)
     }
     case T_TILE: {
         const struct app *a = &builtin_apps[g->app];
-        gfx_fill_rect(S(), r.x, r.y, r.w, r.h, area_bg());
+        background(r.x, r.y, r.w, r.h);
         if (i == pressed || i == hover)
-            gfx_fill_round_rect(S(), r.x + 4, r.y, r.w - 8, r.h, TILE_RADIUS,
-                                target_bg(i, area_bg()));
+            gfx_blend_round_rect(S(), r.x + 4, r.y, r.w - 8, r.h, TILE_RADIUS, WHITE,
+                                 i == pressed ? A_PRESSED : A_HOVER);
         int ix = r.x + (r.w - 48) / 2, iy = r.y + 14;
         draw_icon(a, ix, iy);
         gfx_text(S(), r.x + (r.w - gfx_text_width(a->name)) / 2, iy + 48 + 12, a->name, t->fg,
@@ -342,20 +360,9 @@ static void draw_target(int i)
         break;
     }
     case T_DOCK:
-    case T_APPS: {
-        uint32_t base = dock_bg();
-        gfx_fill_rect(S(), r.x, r.y, r.w, r.h, base);
-        if (i == pressed || i == hover || (g->kind == T_APPS && grid_open))
-            gfx_fill_round_rect(S(), r.x + 2, r.y, r.w - 4, r.h, 12,
-                                target_bg(i, gfx_mix(WHITE, base, g->kind == T_APPS && grid_open ? 38 : 0)));
-        if (g->kind == T_APPS)          /* nine dots, like GNOME's "Show Apps" */
-            for (int k = 0; k < 9; k++)
-                gfx_fill_circle(S(), r.x + r.w / 2 - 10 + (k % 3) * 10, r.y + r.h / 2 - 10 + (k / 3) * 10,
-                                3, t->fg);
-        else
-            draw_icon(&builtin_apps[g->app], r.x + (r.w - DOCK_ICON) / 2, r.y + (r.h - DOCK_ICON) / 2);
-        break;
-    }
+    case T_APPS:
+        draw_dock();
+        return;
     }
     screen_damage(r.x, r.y, r.w, r.h);
 }
@@ -394,7 +401,7 @@ static void menu_set(int open)
 static void draw_desktop(void)
 {
     const struct theme *t = T();
-    gfx_fill_rect(S(), 0, t->topbar_h, S()->w, S()->h - t->topbar_h, area_bg());
+    background(0, t->topbar_h, S()->w, S()->h - t->topbar_h);
     for (int i = 0; i < ntargets; i++)
         if (targets[i].kind == T_TILE)
             draw_target(i);
@@ -427,6 +434,7 @@ void desktop_start(void)
     }
     if (!screen_ready())
         return;
+    wallpaper_init();
     started = 1;
     if (wm_is_open()) {         /* a self-test left a window open: just the top bar */
         build_targets();
