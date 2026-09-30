@@ -32,6 +32,8 @@ make -s BUILD=build/test-gfx EXTRA_CFLAGS=-DLKX_SELFTEST_GFX EXTRA_KERNEL_SRCS=t
     build/test-gfx/litekernx.img >/dev/null || exit 1
 make -s BUILD=build/test-wm EXTRA_CFLAGS=-DLKX_SELFTEST_WM EXTRA_KERNEL_SRCS=tests/kernel/selftest_wm.c \
     build/test-wm/litekernx.img >/dev/null || exit 1
+make -s BUILD=build/test-widgets EXTRA_CFLAGS=-DLKX_SELFTEST_WIDGETS \
+    EXTRA_KERNEL_SRCS=tests/kernel/selftest_widgets.c build/test-widgets/litekernx.img >/dev/null || exit 1
 
 # The 1024x600 video BIOS patch, tested on QEMU's q35 (945-style PAM registers)
 # with a video BIOS carrying the EeePC's Intel mode table. SeaBIOS on q35
@@ -260,6 +262,24 @@ check "desktop: clicking Files opens it, its close button returns to the desktop
     '^wm: close$' \
     "^screen: corner $DESKTOP$" \
     '^screen: has 3584e4 in 400,78,512,182: yes$' \
+    '!PANIC'
+
+boot_until build/test-widgets/litekernx.img '^selftest: widgets [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$' 20
+check "widgets: button, list, entry, dialog (states, input, results)" \
+    '^selftest: widgets ([0-9]+)/\1 passed$' \
+    '!selftest: FAIL|PANIC'
+
+# Files, driven from the keyboard: Ctrl+N creates, F2 renames, Delete
+# deletes, each through its dialog; a duplicate name is refused.
+KEYS="move:-56,-254 press:1 release ctrl-n h i ret f2 backspace backspace b y e ret ctrl-n b y e ret esc delete ret" \
+KEYS_DONE='^files: delete bye' SCREEN="corner=" \
+    boot_until build/litekernx.img "$done_re" 30
+check "Files: create, rename and delete through the dialogs" \
+    '^desktop: open Files$' \
+    '^files: create hi$' \
+    '^files: rename hi -> bye$' \
+    '^files: delete bye$' \
+    '!files: create bye' \
     '!PANIC'
 
 # The Log app shows the log below its 46 px header bar.

@@ -36,32 +36,6 @@ void log_key(const struct key_event *ev)
     kprintf("\n");
 }
 
-/* --- Files: a placeholder until storage (Phase 2 §5a) ------------------- */
-
-static void centred(struct gfx_surface *s, int y, const char *text, uint32_t colour, int bold)
-{
-    int x = (s->w - gfx_text_width(text)) / 2;
-    gfx_text(s, x, y, text, colour, GFX_TRANSPARENT);
-    if (bold)
-        gfx_text(s, x + 1, y, text, colour, GFX_TRANSPARENT);
-}
-
-/* An Adwaita "status page": icon, title, explanation, centred. */
-static void files_open(void)
-{
-    const struct theme *t = theme_get();
-    struct gfx_surface *c = wm_content();
-    const struct icon *ic = icon_find("files");
-    int y = c->h / 2 - 70;
-    if (ic)
-        gfx_blit_alpha(c, (c->w - ic->w) / 2, y, ic->px, ic->w, ic->h, ic->w);
-    centred(c, y + 48 + 20, "No disks yet", t->fg, 1);
-    centred(c, y + 48 + 48, "Browsing the USB stick and the internal disk", t->fg_dim, 0);
-    centred(c, y + 48 + 48 + FONT_H + 2, "arrives with storage support.", t->fg_dim, 0);
-    wm_damage(0, 0, c->w, c->h);
-    wm_present();
-}
-
 /* --- Log: the boot log, in a window ------------------------------------- */
 
 static void log_open(void)
@@ -85,7 +59,7 @@ static void log_close(void)
 }
 
 const struct app builtin_apps[] = {
-    { "Files", "files", files_open, 0, 0 },
+    { "Files", "files", files_open, files_event, 0 },
     { "Log", "log", log_open, log_event, log_close },
 };
 const int builtin_app_count = sizeof(builtin_apps) / sizeof(builtin_apps[0]);

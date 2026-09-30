@@ -30,6 +30,7 @@ struct theme {
     uint32_t warning;
     uint32_t destructive_bg;
     uint32_t destructive;       /* destructive text/icons */
+    uint32_t dialog_bg;         /* dialogs (and popovers later) */
     uint32_t desktop_bg;        /* the desktop, behind the app grid */
     uint32_t topbar_bg;
     uint32_t tile_hover;        /* app grid tile under the pointer */

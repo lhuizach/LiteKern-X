@@ -21,6 +21,7 @@ static const struct theme adwaita_dark = {
     .warning          = 0xcd9309,   /* @warning_color, dark */
     .destructive_bg   = 0xc01c28,   /* @destructive_bg_color */
     .destructive      = 0xff7b63,   /* @destructive_color, dark */
+    .dialog_bg        = 0x36363a,   /* @dialog_bg_color */
     .desktop_bg       = 0x202634,   /* a plain dark slate until wallpapers (Phase 3 §5) */
     .topbar_bg        = 0x000000,   /* GNOME Shell's top bar */
     .tile_hover       = 0x363c48,   /* white 10% over desktop_bg (app grid) */

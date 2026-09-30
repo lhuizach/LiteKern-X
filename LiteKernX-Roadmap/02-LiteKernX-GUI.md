@@ -23,9 +23,9 @@ Goal: a stable, usable GUI — not decorated yet (that's Phase 3), but functiona
 - [x] **Desktop** (added 2026-09-30): after boot, a GNOME-style desktop replaces the log — a black top bar and an app grid (48×48 PNG icons, `assets/icons/`, rules in `docs/ASSET-PROMPTS.md` §4). Clicking an app opens it full screen; closing it returns to the desktop. For now the apps are built in (`kernel/apps.c`): **Files** (a placeholder until §5a) and **Log** (the boot log in a window). A panic still takes over the whole screen. §5 swaps the built-in list for KERN86 apps from `kerns.json`. Kept minimal: Phase 3 redoes it
 
 ## 4. Core GUI widgets (~5 hrs)
-- [ ] Button, label, basic layout container — minimum set, not a full toolkit
-- [ ] Each widget: state (hover/pressed/disabled), not just static appearance
-- [ ] Keep this minimal — Phase 3 is where these get polished, not here
+- [x] Button, label, basic layout container — minimum set, not a full toolkit — `kernel/widget.c` (2026-09-30), Adwaita dark: label, button (normal, suggested, destructive, flat), boxed list (icons, detail, selection, double-click, keyboard, scrolling), text entry (cursor, editing keys, scrolling) and alert dialog (dims what's behind, Enter/Esc). Layout is done by the app; no container toolkit was needed. Depends only on gfx, the font and the theme, so it can move into the app library in §5
+- [x] Each widget: state (hover/pressed/disabled), not just static appearance — hover, pressed, disabled, focused, selected; input sets a `dirty` flag and only those widgets are redrawn. The window system now passes every pointer update (`WM_EVENT_POINTER`, moves merged) with a timestamp. 39-check self-test (`tests/kernel/selftest_widgets.c`)
+- [x] Keep this minimal — Phase 3 is where these get polished, not here — no anti-aliasing, no animations, no blinking cursor (no timer yet). **Files** uses them all on an in-memory demo folder: create file/folder, rename, delete through dialogs, with FAT32's name rules; Ctrl+N, F2, Delete. End-to-end test drives it from the keyboard
 
 ## 5a. Storage for the Files app (~8 hrs, added 2026-09-30)
 Disks came off the Non-Goals list for the first app, Files (see `docs/NON-GOALS.md`, Decided).
