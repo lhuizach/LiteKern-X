@@ -70,6 +70,22 @@ Boot the normal image again. Pass means:
 
 If you instead see `vbe: WARNING: could not patch ...`, the shadow RAM stayed locked: photograph the log. If the screen stays black, write `litekernx-vbios-diag.img` again and photograph the `diag:` lines, which now show the patched record too.
 
+### E. Phase 2 GUI and storage (`litekernx.img`, 2026-09-30 and later)
+The image is now **65 MiB**: it carries a 64 MiB FAT32 partition for files. Write the whole file, as before. Afterwards Windows should show the stick as a drive called **LITEKERNX**, holding `Welcome to LiteKern X.txt`, `README.TXT`, `Documents` and `Pictures`.
+
+Boot it, then check:
+| What | Pass |
+|---|---|
+| The desktop | The crossing wallpaper fills the screen, with the top bar (clock showing the right time) and the dock |
+| **Log** app (dock) | A `wallpaper: 1024x600, ... unpacked and checked in N ms` line: **photo it** (N on the Atom) |
+| Log: `dev boot0 driver=bios-disk bound` | Present: the USB stick is reachable through the BIOS |
+| Log: `storage: boot0 partition at 2048 (FAT32): FAT32, read/write` | Present |
+| Log: `ata0: ...` | The internal disk's model and size, `primary master (read-only)`, then one `storage: ata0 partition ...` line per partition (Windows XP's is `NTFS or exFAT: not supported, left alone`). **Photo these lines** |
+| **Files** | Places lists the stick and the internal disk. On the stick, create a folder, a file, rename one, delete one |
+| Back on Windows | The stick shows exactly what Files left there. Run Windows' **error check** on it (right-click the drive, Properties, Tools, Check): it should find no problems |
+
+If Files or the log shows a `boot0: BIOS read ... failed (AH=0x..)` line, photo it: the AH code says what the BIOS didn't like.
+
 ## 5. Send back
 The photos (or just the answers to the table). I'll tick the roadmap boxes, fill in the measurements table in `docs/BOOT-BUDGET.md`, and fix anything the real hardware disagrees with before Phase 2.
 
