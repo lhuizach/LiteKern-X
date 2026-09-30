@@ -21,6 +21,10 @@ static const struct theme adwaita_dark = {
     .warning          = 0xcd9309,   /* @warning_color, dark */
     .destructive_bg   = 0xc01c28,   /* @destructive_bg_color */
     .destructive      = 0xff7b63,   /* @destructive_color, dark */
+    .desktop_bg       = 0x202634,   /* a plain dark slate until wallpapers (Phase 3 §5) */
+    .topbar_bg        = 0x000000,   /* GNOME Shell's top bar */
+    .tile_hover       = 0x363c48,   /* white 10% over desktop_bg (app grid) */
+    .tile_active      = 0x414652,   /* white 15% */
 
     .headerbar_h = 46,
     .button_size = 34,
@@ -28,6 +32,9 @@ static const struct theme adwaita_dark = {
     .spacing = 6,
     .margin = 12,
     .row_h = 40,
+    .topbar_h = 30,
+    .tile_w = 112,
+    .tile_h = 104,
 };
 
 const struct theme *theme_get(void)

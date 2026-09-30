@@ -149,7 +149,8 @@ void wm_open(const char *name)
     nbuttons = 0;
     qhead = qtail = 0;
     hover = pressed = -2;
-    content = (struct gfx_surface){ s->px + t->headerbar_h * s->stride, s->w,
+    last_buttons = 0;       /* apps open on a release: nothing is held */
+    content =(struct gfx_surface){ s->px + t->headerbar_h * s->stride, s->w,
                                     s->h - t->headerbar_h, s->stride };
     gfx_fill_rect(&content, 0, 0, content.w, content.h, t->window_bg);
     layout();
@@ -163,7 +164,7 @@ void wm_close(void)
     if (!open)
         return;
     open = 0;
-    console_set_visible(1);
+    hover = pressed = -2;
 }
 
 int wm_is_open(void)

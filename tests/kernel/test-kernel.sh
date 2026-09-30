@@ -81,7 +81,7 @@ boot_until() {
     rm -f "$log" "$sock"
 }
 
-NAVY=1e3a5f TEXT=c8d0dc RED=801010 WHITE=ffffff
+NAVY=1e3a5f TEXT=c8d0dc RED=801010 WHITE=ffffff DESKTOP=202634
 
 # check NAME: all remaining args are regexes that must each match a line;
 # a regex prefixed with ! must match no line.
@@ -111,7 +111,7 @@ selftest_done_re='^selftest: drivers [0-9]+/[0-9]+ passed.?$|^PANIC: .*\).?$'
 user_done_re='^selftest: user [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$'
 panic_re='^PANIC: .*[0-9a-f)].?$'
 
-SCREEN="corner= has=$TEXT@0,16,100,32" boot_until build/litekernx.img "$done_re" 20
+SCREEN="corner= has=$WHITE@0,0,120,30 has=3584e4@400,78,512,182" boot_until build/litekernx.img "$done_re" 20
 check "boots to ready with per-phase timing" \
     '^LiteKern X$' \
     '^\[boot\] tsc=[0-9]+ MHz' \
@@ -153,10 +153,11 @@ check "binds the COM1, display, keyboard and touchpad drivers" \
     '^dev mouse0 driver=ps2mouse bound$' \
     '^drivers: 4 registered, 4 devices bound, 0 failed; [0-9]+ PCI devices without a driver$'
 
-check "shows the boot log on screen (navy = ready)" \
+check "boots to the desktop (top bar, app grid)" \
     '^console: 128x48 characters, video BIOS font at 0x[0-9a-f]{5}$' \
-    "^screen: corner $NAVY$" \
-    "^screen: has $TEXT in 0,16,100,32: yes$" \
+    "^screen: corner $DESKTOP$" \
+    "^screen: has $WHITE in 0,0,120,30: yes$" \
+    '^screen: has 3584e4 in 400,78,512,182: yes$' \
     '^fb0: write-combining on \(MTRR 0xfd000000-0xfd3fffff\)$'
 
 SCREEN="corner= has=ffffff@16,16,200,32 has=e8a33d@376,48,428,88 has=48a6e8@16,110,500,290" \
@@ -232,18 +233,33 @@ check "window system: header bar, buttons, events (+ Adwaita dark window on scre
 
 KEYS="move:489,-361 press:1 release" KEYS_DONE='^wm: close' SCREEN="corner=" \
     boot_until build/test-wm/litekernx.img '^mouse: \(512, 384\) buttons ---.?$' 20
-check "window system: clicking the close button closes the window, the log comes back" \
+check "window system: clicking the close button closes the window, the desktop comes back" \
     '^wm: close$' \
-    "^screen: corner $NAVY$" \
+    "^screen: corner $DESKTOP$" \
     '!PANIC'
 
-KEYS="a b c d e f g h i j k l m home" KEYS_DONE="^kbd: key 0x026 'l'" \
-SCREEN="has=$TEXT@0,0,200,16 has=$TEXT@800,0,1024,16 has=$TEXT@0,16,100,32" \
+# Desktop: the app grid is centred under the top bar; with two apps on the
+# 1024-wide screen, Files is the tile at 400-512 and Log at 512-624, from
+# y=78. The pointer starts at 512,384; the close button is at 1001,23.
+KEYS="move:-56,-254 press:1 release move:545,-107 press:1 release" KEYS_DONE='^wm: close' \
+SCREEN="corner= has=3584e4@400,78,512,182" \
     boot_until build/litekernx.img "$done_re" 20
-check "scrollback: Home shows the start of the log with the indicator" \
-    "^screen: has $TEXT in 0,0,200,16: no$" \
-    "^screen: has $TEXT in 800,0,1024,16: yes$" \
-    "^screen: has $TEXT in 0,16,100,32: yes$" \
+check "desktop: clicking Files opens it, its close button returns to the desktop" \
+    '^desktop: open Files$' \
+    '^wm: close$' \
+    "^screen: corner $DESKTOP$" \
+    '^screen: has 3584e4 in 400,78,512,182: yes$' \
+    '!PANIC'
+
+# The Log app shows the log below its 46 px header bar.
+KEYS="move:56,-254 press:1 release a b c d e f g h i j k l m home" KEYS_DONE="^kbd: key 0x026 'l'" \
+SCREEN="has=$TEXT@0,46,200,62 has=$TEXT@800,46,1024,62 has=$TEXT@0,62,100,78" \
+    boot_until build/litekernx.img "$done_re" 20
+check "Log app: the log in a window; Home shows its start with the indicator" \
+    '^desktop: open Log$' \
+    "^screen: has $TEXT in 0,46,200,62: no$" \
+    "^screen: has $TEXT in 800,46,1024,62: yes$" \
+    "^screen: has $TEXT in 0,62,100,78: yes$" \
     '!kbd: key 0x147'
 
 boot_until build/test-drivers/litekernx.img "$selftest_done_re" 20

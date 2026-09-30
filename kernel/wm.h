@@ -7,7 +7,7 @@
  * content coordinates, clipped to it) and calls wm_present(). Input arrives
  * as events: clicks and keys for the content, presses of the app's header
  * buttons, and a request to close. Opening a window replaces the current
- * one; closing it brings the boot log back. */
+ * one; closing it goes back to the desktop (kernel/desktop.h). */
 #ifndef LKX_WM_H
 #define LKX_WM_H
 
@@ -44,7 +44,7 @@ struct wm_event {
 
 /* Open the (one) window, replacing any other. The console is hidden. */
 void wm_open(const char *title);
-/* Close it: the console (boot log) comes back. */
+/* Close it. Whoever closes it redraws what's behind (desktop_show()). */
 void wm_close(void);
 int wm_is_open(void);
 

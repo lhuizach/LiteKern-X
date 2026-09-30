@@ -1,6 +1,8 @@
 /* LiteKern X — kernel entry point (called from kernel/entry.asm). */
 #include "boot/bootinfo.h"
 #include "drivers/builtin.h"
+#include "kernel/apps.h"
+#include "kernel/desktop.h"
 #include "kernel/console.h"
 #include "kernel/cursor.h"
 #include "kernel/driver.h"
@@ -70,62 +72,10 @@ static const struct boot_info *keep_boot_info(uint32_t magic, const struct boot_
     return &boot_info;
 }
 
-/* After boot: interrupts on, sleep until an IRQ, and log input so the
- * keyboard and touchpad can be checked on real hardware. Nothing else runs
- * yet (Phase 2 brings the cursor, GUI and apps). */
+/* After boot: interrupts on, sleep until an IRQ, and pass input to the
+ * desktop or the open app. Input is logged too, so the keyboard and
+ * touchpad can still be checked on real hardware (in the Log app). */
 #define MOUSE_LOG_MS 100    /* movement is logged at most this often */
-
-/* PgUp/PgDn/Home/End scroll the on-screen log (on the EeePC: Fn + arrows)
- * instead of being logged. */
-static int console_key(const struct key_event *ev)
-{
-    int page = (int)console_rows() - 1;
-    switch (ev->key) {
-    case KEY_PAGEUP:   if (ev->pressed) console_scroll(page);    return 1;
-    case KEY_PAGEDOWN: if (ev->pressed) console_scroll(-page);   return 1;
-    case KEY_HOME:     if (ev->pressed) console_scroll(100000);  return 1;
-    case KEY_END:      if (ev->pressed) console_scroll(-100000); return 1;
-    }
-    return 0;
-}
-
-static void log_key(const struct key_event *ev)
-{
-    if (console_key(ev) || !ev->pressed)
-        return;
-    kprintf("kbd: key 0x%03x", ev->key);
-    if (ev->ascii >= 0x20 && ev->ascii < 0x7f)
-        kprintf(" '%c'", ev->ascii);
-    else if (ev->ascii)
-        kprintf(" ascii 0x%02x", ev->ascii);
-    if (ev->mods)
-        kprintf(" mods 0x%x", ev->mods);
-    kprintf("\n");
-}
-
-/* Until apps run (Phase 2 §5) nothing else consumes window events: close
- * the window when asked, log the rest. */
-static void handle_window_events(void)
-{
-    struct wm_event ev;
-    while (wm_poll_event(&ev)) {
-        switch (ev.type) {
-        case WM_EVENT_CLOSE:
-            kprintf("wm: close\n");
-            wm_close();
-            break;
-        case WM_EVENT_HEADER:
-            kprintf("wm: header button %d\n", ev.id);
-            break;
-        case WM_EVENT_CLICK:
-            kprintf("wm: click (%d, %d)\n", ev.x, ev.y);
-            break;
-        case WM_EVENT_KEY:
-            kprintf("wm: key 0x%03x\n", ev.key.key);
-            break;
-        }
-    }
-}
 
 /* Clicks go on screen; plain movement goes to serial only (the tests read it
  * there), as the cursor already shows it and each logged line used to cost a
@@ -146,11 +96,18 @@ static void __attribute__((noreturn)) idle(const struct boot_info *bi)
     uint32_t last_log = 0;
 
     if (kbd && kbd->state == DEVICE_BOUND)
-        kprintf("kbd: ready; key presses are logged below (PgUp/PgDn/Home/End scroll the log)\n");
+        kprintf("kbd: ready; key presses are logged (PgUp/PgDn/Home/End scroll the log)\n");
     if (mouse && mouse->state == DEVICE_BOUND) {
-        kprintf("mouse: ready; pointer starts at the centre, clicks logged below\n");
+        kprintf("mouse: ready; pointer starts at the centre, clicks logged\n");
         log_pointer(x, y, buttons, 1);
     }
+
+    /* The boot log stays up while booting (visible progress); then the
+     * desktop takes over. The gfx self-test's pattern is left on screen for
+     * its screenshot instead. */
+#ifndef LKX_SELFTEST_GFX
+    desktop_show();
+#endif
 
     for (;;) {
         struct key_event keys[8];
@@ -178,7 +135,10 @@ static void __attribute__((noreturn)) idle(const struct boot_info *bi)
             y += moves[i].dy;
             x = x < 0 ? 0 : x >= w ? w - 1 : x;
             y = y < 0 ? 0 : y >= h ? h - 1 : y;
-            wm_input_mouse(x, y, moves[i].buttons);     /* per packet: no click is lost */
+            if (wm_is_open())                   /* per packet: no click is lost */
+                wm_input_mouse(x, y, moves[i].buttons);
+            else
+                desktop_input_mouse(x, y, moves[i].buttons);
             moved |= moves[i].dx || moves[i].dy;
             if (moves[i].buttons != buttons) {      /* clicks are always logged */
                 buttons = moves[i].buttons;
@@ -189,7 +149,7 @@ static void __attribute__((noreturn)) idle(const struct boot_info *bi)
         }
         if (nm > 0)
             cursor_move_to(x, y);   /* once per batch: two small screen updates */
-        handle_window_events();
+        desktop_handle_events();
         if (moved && uptime_ms() - last_log >= MOUSE_LOG_MS) {
             log_pointer(x, y, buttons, 0);
             moved = 0;

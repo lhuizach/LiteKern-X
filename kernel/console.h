@@ -29,6 +29,10 @@ void console_set_colours(uint32_t fg, uint32_t bg);
  * redraws. A panic always shows it again (kernel/status.c). */
 void console_set_visible(int visible);
 
+/* Draw from screen row y down (0: the whole screen; the Log app passes its
+ * header bar's height so the log shows inside a window). Redraws if shown. */
+void console_set_area(int y);
+
 /* Scrollback: move the view `lines` up (> 0) or down (< 0) through the last
  * 512 lines, clamped. Any new output returns to the live view. */
 void console_scroll(int lines);

@@ -24,10 +24,12 @@ LIBGCC  := $(shell $(CC) -m32 -print-libgcc-file-name)
 KERNEL_SRCS := $(wildcard kernel/*.c drivers/*.c kernel/*.asm) $(EXTRA_KERNEL_SRCS)
 KERNEL_OBJS := $(patsubst %.c,$(BUILD)/%.o,$(filter %.c,$(KERNEL_SRCS))) \
                $(patsubst %.asm,$(BUILD)/%.asm.o,$(filter %.asm,$(KERNEL_SRCS))) \
-               $(BUILD)/gen/cursors.o
+               $(BUILD)/gen/cursors.o $(BUILD)/gen/icons.o
 
 # Cursors: assets/cursors.json + PNGs -> C, at build time (docs/ASSET-PROMPTS.md §3).
 CURSOR_ASSETS := assets/cursors.json $(wildcard assets/cursors/*.png)
+# App icons: assets/icons.json + 48x48 PNGs -> C (docs/ASSET-PROMPTS.md §2).
+ICON_ASSETS := assets/icons.json $(wildcard assets/icons/*.png)
 
 # Ring 3 test programs: flat binaries at USER_BASE, embedded into self-test
 # kernels by tests/kernel/user_programs.asm.
@@ -55,6 +57,13 @@ $(BUILD)/gen/cursors.c: $(CURSOR_ASSETS) tools/cursors2c.py tools/lkx_png.py
 	python3 tools/cursors2c.py assets/cursors.json $@
 
 $(BUILD)/gen/cursors.o: $(BUILD)/gen/cursors.c kernel/cursor.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/gen/icons.c: $(ICON_ASSETS) tools/icons2c.py tools/lkx_png.py
+	@mkdir -p $(dir $@)
+	python3 tools/icons2c.py assets/icons.json $@
+
+$(BUILD)/gen/icons.o: $(BUILD)/gen/icons.c kernel/icon.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD)/%.user.bin: %.asm tests/kernel/user/user.inc

@@ -5,7 +5,8 @@ Two kinds of asset, made two ways:
 | Asset | Format | How you make it |
 |---|---|---|
 | **Cursors** (§3) | **PNG images**, 32×32 | A text AI types a pixel grid that `tools/cursor-grid2png.py` converts, or a pixel editor (Piskel, Aseprite, GIMP) |
-| Icons, UI glyphs, logo (§4–§6) | SVG | A text AI that writes SVG code (ChatGPT, Claude, Gemini), using the prompts below |
+| **App icons** (§4) | **PNG images**, 48×48 | An image AI or a pixel editor, in the Adwaita style (§4.2) |
+| UI glyphs, logo (§5–§6) | SVG | A text AI that writes SVG code (ChatGPT, Claude, Gemini), using the prompts below |
 
 All of them are turned into bitmaps for the kernel **at build time**, by a script, so the kernel never parses PNG or SVG itself.
 
@@ -19,7 +20,8 @@ assets/
   cursors/      arrow.png, hand.png, text.png, wait-0..3.png, move.png, not-allowed.png,
                 resize-h.png, resize-v.png, resize-d1.png, resize-d2.png
   cursors.json  hotspots and animation (see §3.4)
-  icons/apps/   <app>.svg            one 48x48 master per app
+  icons/        <app>.png            one 48x48 PNG per app (§4)
+  icons.json    which icons exist (§4.1)
   icons/ui/     close.svg, minimise.svg, check.svg, ... (16x16)
   logo.svg      optional, 128x128
 ```
@@ -52,7 +54,7 @@ Use **only** these 8 colours, plus transparency:
 |---|---|---|---|
 | Cursors | **32×32** | `assets/cursors/<name>.png` | RGBA PNG. The visible shape is about 20–24 px tall. Hotspot goes in `cursors.json`. |
 | Busy cursor | 32×32 × 4 frames | `assets/cursors/wait-0.png` … `wait-3.png` | Played at 150 ms per frame |
-| App icons | 48×48 master | `assets/icons/apps/<app>.svg` | Also used at 32 and 16. Hand-tune a 16×16 if the small one looks muddy (§4.3). |
+| App icons | **48×48** | `assets/icons/<app>.png` | RGBA PNG, Adwaita style (§4). |
 | UI glyphs | 16×16 | `assets/icons/ui/<name>.svg` | Title-bar buttons, checkboxes and similar |
 | Logo (optional) | 128×128 | `assets/logo.svg` | For the Phase 4 website, and it can be the boot splash (the boot budget is now ≤ 5 s, see `docs/BOOT-BUDGET.md`). |
 
@@ -176,9 +178,55 @@ wsl python3 tools/cursor-check.py assets/cursors/arrow.png build/arrow-preview.p
 
 ---
 
-## 4. App icons (SVG, made with a text AI)
+## 4. App icons (PNG images, decided 2026-09-30)
 
-### 4.0 Rules block (paste this first in every new chat for §4–§6)
+App icons are **48×48 RGBA PNGs**, like the cursors, and are converted at build time by `tools/icons2c.py`. They follow the **Adwaita** icon style (GNOME/Fedora), to match the desktop (`kernel/theme.c`). The 8-colour palette in §1 doesn't apply to them.
+
+`assets/icons/files.png` and `log.png` are placeholders drawn by `tools/icon-placeholders.py`. Replace either one by saving a PNG with the same name.
+
+### 4.1 Rules
+- **Canvas:** 48×48 RGBA PNG with a transparent background. The icon's body fits in about 40×40, centred, with 4 px of empty space around it.
+- **Style, Adwaita:** flat, simple and friendly shapes with rounded corners. Light comes from the top: a slightly lighter top face and a darker lower edge are fine. No outlines, no 3D perspective, no text, no photos.
+- **Soft edges are fine:** half-transparent pixels along curves are anti-aliasing and are kept.
+- **Colours:** the GNOME palette. Blues `#62a0ea` `#3584e4` `#1c71d8`, greens `#57e389` `#2ec27e`, yellows `#f8e45c` `#f6d32d`, oranges `#ffa348` `#ff7800`, reds `#ed333b` `#c01c28`, purples `#c061cb` `#9141ac`, browns `#cdab8f` `#986a44`, light greys `#deddda` `#c0bfbc`, dark greys `#5e5c64` `#3d3846` `#241f31`.
+- **Must read on the desktop background** (`#202634`, dark slate), at 100% zoom.
+- **Registered in `assets/icons.json`:** `"<name>": "<name>.png"`. The build fails if a listed file is missing or isn't 48×48.
+
+### 4.2 Prompt for an image AI or a pixel editor
+```text
+Make a 48x48 pixel app icon as a PNG with a transparent background, for LiteKern X, a
+small operating system styled like GNOME (Adwaita). The icon is for <what the app does>.
+
+Style: GNOME/Adwaita app icon. Flat, simple, rounded shapes; soft light from the top (a
+slightly lighter top, a slightly darker bottom edge); no outlines, no text, no 3D
+perspective, no photo textures. The shape fills about 40x40 pixels, centred, with a
+4 pixel transparent margin. It must be crisp and readable at exactly 48x48 on a dark
+background (#202634). Colours from the GNOME palette only: <pick 2-3, e.g. blue #62a0ea
+#3584e4, light grey #deddda>.
+
+Symbol: <1-3 simple shapes>.
+```
+
+| File | Symbol |
+|---|---|
+| `files.png` | A blue folder (`#3584e4` back and tab, `#62a0ea` front) with a light grey sheet of paper peeking out. |
+| `log.png` | A dark terminal window (`#5e5c64` frame, `#241f31` screen) with a white `>` and `_`. |
+| `notes.png` | A yellow note pad (`#f6d32d`) with 3 grey lines. |
+| `settings.png` | A grey gear (`#9a9996`) with a darker centre. |
+| `clock.png` | A white clock face with dark hands at 10:10 and a blue rim. |
+
+### 4.3 Checklist
+- [ ] 48×48, RGBA, with a transparent background.
+- [ ] It reads clearly at 100% on `#202634`, next to the other icons.
+- [ ] It's listed in `assets/icons.json`, and `wsl make` builds without an `icons2c:` error.
+
+---
+
+## 5. UI glyphs (SVG, title bar and widgets)
+
+> These rules predate the Adwaita decision (2026-09-30) and use the §1 palette. Revisit them before making glyphs; the Phase 2 header-bar icons are drawn in code for now (`kernel/wm.c`).
+
+### 5.0 Rules block (paste this first in every new chat for §5–§6)
 
 ```text
 You are designing icons for LiteKern X, a small from-scratch operating system for a 2008
@@ -218,58 +266,9 @@ COLOURS — use ONLY these 8 colours (plus fully transparent background):
 STYLE
 - Flat, geometric, friendly, "technical but warm". No skeuomorphism, 3D, photo realism
   or gloss. Implied light source top-left.
-- Every icon must read on BOTH the navy desktop (#1E3A5F) and a light window (#C8D0DC):
-  give light shapes a 1px ink (#0F1E33) outline where they touch the edge.
 - No letters or words inside icons.
 - Consistent family: same corner radius, same outline weight, same palette in every icon.
 ```
-
-### 4.1 Shared app-icon rules (paste once, after the Rules block)
-```text
-APP ICON RULES (in addition to the rules above)
-- Canvas 48x48 with a 2px transparent margin, so the icon body fits in 44x44.
-- Every app icon sits on the same base: a rounded square 44x44 at (2,2), rx=8, fill navy
-  #1E3A5F, 1px ink #0F1E33 outline, and a 1px steel #2E5584 inner highlight line along
-  the top edge only.
-- The symbol on the base uses mist #C8D0DC and white #FFFFFF, with exactly ONE accent
-  colour (sky #48A6E8, or amber #E8A33D if the prompt says so).
-- The symbol fits in the central 28x28 area (from 10,10 to 38,38) and is readable when
-  the whole icon is shrunk to 16x16. Use at most 3 main shapes.
-- Same base, radius, outline and highlight in every app icon: these are a family.
-```
-
-### 4.2 Per-app prompts
-Phase 3 calls for **1–2 finished apps** to start with (no fixed cap since 2026-09-29), and which apps is still open. These all suit v1.0, which has no network (that's Phase 5) and a read-only ramdisk:
-
-| File | Symbol prompt (paste after the app-icon rules) |
-|---|---|
-| `notes.svg` | A notes app: a mist sheet of paper with its top-right corner folded, and 3 short horizontal sky lines on it. |
-| `calculator.svg` | A calculator: a mist rectangle body, a sky display strip across the top, and a 3×3 grid of small white squares as keys. |
-| `clock.svg` | A clock: a mist circle face with an ink outline, two ink hands showing about 10:10, and a single sky dot at the centre. |
-| `sysinfo.svg` | A system information app: a mist chip shape (a square with 3 short pins on each side) with a sky square at its centre. |
-| `paint.svg` | A drawing app: a white diagonal brush from bottom-left to top-right, with an amber tip (the amber accent). |
-| `terminal.svg` | A console/log viewer: a mist window frame containing a sky ">" chevron and a short white underscore cursor. |
-| `settings.svg` | Settings: a mist gear with 8 teeth and a navy hole, and one sky ring around the hole. |
-| `launcher.svg` | The app launcher/home: a 2×2 grid of mist rounded squares, with the top-left one in sky. |
-
-Template for a new app:
-```text
-[paste the Rules block and the App icon rules first]
-Make assets/icons/apps/<name>.svg: an app icon for <what the app does, in one sentence>.
-Symbol: <1-3 simple shapes and their colours>. Accent colour: <sky or amber>.
-```
-
-### 4.3 Hand-tuned 16×16 version (only if the small one looks muddy)
-```text
-[Rules block first]
-Redraw this 48x48 app icon as a 16x16 icon for a taskbar: <paste the 48x48 SVG>.
-Canvas 16x16, base rounded square 14x14 at (1,1) rx=3, same colours. Simplify the symbol
-to at most 2 shapes; every shape at least 2px wide. Save as <name>-16.svg.
-```
-
----
-
-## 5. UI glyphs (SVG, title bar and widgets)
 
 ```text
 UI GLYPH RULES (in addition to the Rules block)
@@ -308,7 +307,7 @@ Nothing else: no wordmark, no text, no shadows.
 
 ---
 
-## 7. Review checklist for SVG assets (§4–§6)
+## 7. Review checklist for SVG assets (§5–§6)
 - [ ] It opens in a browser and shows the expected shape. Check it at **100% zoom**, not zoomed in.
 - [ ] `width`, `height` and `viewBox` match the required size exactly.
 - [ ] It contains none of: `<text>`, `<image>`, `<style>`, `gradient`, `filter`, `mask`, `clipPath`, `<use>`, `<defs>`, `rotate(`, `scale(`, `matrix(`. A quick check from PowerShell in the repo:

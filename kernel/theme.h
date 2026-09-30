@@ -30,6 +30,10 @@ struct theme {
     uint32_t warning;
     uint32_t destructive_bg;
     uint32_t destructive;       /* destructive text/icons */
+    uint32_t desktop_bg;        /* the desktop, behind the app grid */
+    uint32_t topbar_bg;
+    uint32_t tile_hover;        /* app grid tile under the pointer */
+    uint32_t tile_active;       /* pressed */
 
     int headerbar_h;            /* 46 px, like libadwaita */
     int button_size;            /* square header-bar buttons */
@@ -37,6 +41,8 @@ struct theme {
     int spacing;                /* between elements */
     int margin;                 /* around content */
     int row_h;                  /* list rows */
+    int topbar_h;               /* the desktop's top bar */
+    int tile_w, tile_h;         /* one app in the grid: icon + name */
 };
 
 const struct theme *theme_get(void);

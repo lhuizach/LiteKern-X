@@ -19,6 +19,8 @@ static uint32_t scrollback;                 /* lines scrolled up from the live v
 static uint32_t fg = 0x00c8d0dc, bg = 0x001e3a5f;
 static int active;                          /* initialised: lines are recorded */
 static int hidden;                          /* console_set_visible(0): record, don't draw */
+static struct gfx_surface area;             /* where it draws: the screen, or below a header bar */
+static int area_y;                          /* area's top edge on the screen */
 
 static int drawing(void)
 {
@@ -40,8 +42,8 @@ static uint32_t top(void)
 /* Draw one cell into the screen's back buffer (presented by console_flush). */
 static void cell(uint32_t c, uint32_t r, uint8_t ch, uint32_t f, uint32_t b)
 {
-    gfx_char(screen_surface(), (int)(c * GLYPH_W), (int)(r * GLYPH_H), (char)ch, f, b);
-    screen_damage((int)(c * GLYPH_W), (int)(r * GLYPH_H), GLYPH_W, GLYPH_H);
+    gfx_char(&area, (int)(c * GLYPH_W), (int)(r * GLYPH_H), (char)ch, f, b);
+    screen_damage((int)(c * GLYPH_W), area_y + (int)(r * GLYPH_H), GLYPH_W, GLYPH_H);
 }
 
 /* Scroll the live view up a line by moving the pixels already drawn, rather
@@ -49,11 +51,10 @@ static void cell(uint32_t c, uint32_t r, uint8_t ch, uint32_t f, uint32_t b)
  * Atom). gfx_blit copies rows top to bottom, so moving up in place is safe. */
 static void scroll_up(void)
 {
-    struct gfx_surface *s = screen_surface();
     int text_h = (int)(rows * GLYPH_H);
-    gfx_blit(s, 0, 0, s, 0, GLYPH_H, s->w, text_h - GLYPH_H);
-    gfx_fill_rect(s, 0, text_h - GLYPH_H, s->w, GLYPH_H, bg);
-    screen_damage(0, 0, s->w, text_h);
+    gfx_blit(&area, 0, 0, &area, 0, GLYPH_H, area.w, text_h - GLYPH_H);
+    gfx_fill_rect(&area, 0, text_h - GLYPH_H, area.w, GLYPH_H, bg);
+    screen_damage(0, area_y, area.w, text_h);
 }
 
 static void draw_indicator(void)
@@ -67,16 +68,15 @@ static void draw_indicator(void)
 /* Whole screen: drawn into the back buffer, then presented once. */
 static void redraw(void)
 {
-    struct gfx_surface *s = screen_surface();
-    gfx_fill_rect(s, 0, 0, s->w, s->h, bg);
+    gfx_fill_rect(&area, 0, 0, area.w, area.h, bg);
     uint32_t t = top();
     for (uint32_t r = 0; r < rows && t + r <= line; r++)
         for (uint32_t c = 0; c < cols; c++)
             if (text(t + r)[c] != ' ')
-                gfx_char(s, (int)(c * GLYPH_W), (int)(r * GLYPH_H), text(t + r)[c], fg, bg);
+                gfx_char(&area, (int)(c * GLYPH_W), (int)(r * GLYPH_H), text(t + r)[c], fg, bg);
     if (scrollback)
         draw_indicator();
-    screen_damage_all();
+    screen_damage(0, area_y, area.w, area.h);
     screen_present();
 }
 
@@ -121,6 +121,15 @@ static void put(char c)
     col++;
 }
 
+static void set_area(int y)
+{
+    struct gfx_surface *s = screen_surface();
+    area_y = y;
+    area = (struct gfx_surface){ s->px + y * s->stride, s->w, s->h - y, s->stride };
+    rows = (uint32_t)area.h / GLYPH_H < MAX_ROWS ? (uint32_t)area.h / GLYPH_H : MAX_ROWS;
+    scrollback = 0;
+}
+
 int console_init(uint32_t font_addr)
 {
     if (font_init(font_addr) < 0 || !screen_ready())
@@ -128,7 +137,7 @@ int console_init(uint32_t font_addr)
 
     struct gfx_surface *s = screen_surface();
     cols = (uint32_t)s->w / GLYPH_W < MAX_COLS ? (uint32_t)s->w / GLYPH_W : MAX_COLS;
-    rows = (uint32_t)s->h / GLYPH_H < MAX_ROWS ? (uint32_t)s->h / GLYPH_H : MAX_ROWS;
+    set_area(0);
     memset(history, ' ', sizeof(history));
     line = col = scrollback = 0;
 
@@ -167,6 +176,15 @@ void console_set_visible(int visible)
         scrollback = 0;
         redraw();
     }
+}
+
+void console_set_area(int y)
+{
+    if (!active || y < 0 || y > screen_surface()->h - GLYPH_H || y == area_y)
+        return;
+    set_area(y);
+    if (drawing())
+        redraw();
 }
 
 void console_set_colours(uint32_t new_fg, uint32_t new_bg)
