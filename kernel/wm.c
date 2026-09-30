@@ -4,6 +4,7 @@
 #include "kernel/font.h"
 #include "kernel/screen.h"
 #include "kernel/theme.h"
+#include "kernel/timing.h"
 
 #define QUEUE 32
 #define CLOSE_ID (-1)
@@ -36,6 +37,16 @@ static void copy(char *dst, const char *src, int max)
 
 static void push(struct wm_event ev)
 {
+    ev.time_ms = uptime_ms();
+    /* A plain move replaces a plain move still waiting: only the latest
+     * position matters, and the queue stays short. */
+    if (ev.type == WM_EVENT_POINTER && !ev.changed && qhead != qtail) {
+        struct wm_event *last = &queue[(qhead - 1) % QUEUE];
+        if (last->type == WM_EVENT_POINTER && !last->changed) {
+            *last = ev;
+            return;
+        }
+    }
     if (qhead - qtail == QUEUE)
         qtail++;            /* full: drop the oldest */
     queue[qhead++ % QUEUE] = ev;
@@ -264,7 +275,14 @@ void wm_input_mouse(int x, int y, uint8_t mouse_buttons)
     const struct theme *t = theme_get();
     int down = (mouse_buttons & MOUSE_LEFT) && !(last_buttons & MOUSE_LEFT);
     int up = !(mouse_buttons & MOUSE_LEFT) && (last_buttons & MOUSE_LEFT);
+    uint8_t changed = mouse_buttons ^ last_buttons;
     last_buttons = mouse_buttons;
+
+    /* Every update reaches the app (for hover, press and drag), except a
+     * press that belongs to a header button. */
+    if (!(down && button_at(x, y) >= 0) && !(up && pressed != -2))
+        push((struct wm_event){ .type = WM_EVENT_POINTER, .x = x, .y = y - t->headerbar_h,
+                                .buttons = mouse_buttons, .changed = changed });
 
     int over = button_at(x, y);
     if (over != hover) {

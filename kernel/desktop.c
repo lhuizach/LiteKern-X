@@ -15,6 +15,7 @@
 static const struct app *running;           /* the app in the open window, if any */
 static int hover = -1, pressed = -1;        /* tile index; -1 = none */
 static uint8_t last_buttons;
+static int shown;           /* desktop_show() ran: until then, ignore the pointer */
 
 /* Tiles fill rows left to right, each row centred. */
 static struct gfx_rect tile(int i)
@@ -83,6 +84,7 @@ void desktop_show(void)
         return;
     struct gfx_surface *s = screen_surface();
     hover = pressed = -1;
+    shown = 1;
     console_set_visible(0);     /* the log keeps recording, but no longer draws over us */
     gfx_fill_rect(s, 0, 0, s->w, s->h, theme_get()->desktop_bg);
     draw_topbar();
@@ -103,7 +105,7 @@ static void launch(const struct app *a)
 
 void desktop_input_mouse(int x, int y, uint8_t buttons)
 {
-    if (wm_is_open())
+    if (!shown || wm_is_open())
         return;
     int down = (buttons & MOUSE_LEFT) && !(last_buttons & MOUSE_LEFT);
     int up = !(buttons & MOUSE_LEFT) && (last_buttons & MOUSE_LEFT);
@@ -148,6 +150,7 @@ static void log_event(const struct wm_event *ev)
         kprintf("wm: key 0x%03x\n", ev->key.key);
         break;
     case WM_EVENT_CLOSE:
+    case WM_EVENT_POINTER:      /* too many to log; clicks already are */
         break;
     }
 }

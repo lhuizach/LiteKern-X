@@ -30,9 +30,13 @@ static uint32_t px(int x, int y)
     return s->px[y * s->stride + x];
 }
 
+/* The next event other than pointer updates (checked on their own below). */
 static int next(struct wm_event *ev)
 {
-    return wm_poll_event(ev);
+    while (wm_poll_event(ev))
+        if (ev->type != WM_EVENT_POINTER)
+            return 1;
+    return 0;
 }
 
 static void drain(void)
@@ -121,6 +125,25 @@ void selftest_wm_run(void)
     wm_input_mouse(100, 200, 0);
     check(next(&ev) && ev.type == WM_EVENT_CLICK && ev.x == 100 && ev.y == 200 - t->headerbar_h,
           "a content click arrives in content coordinates");
+
+    drain();
+    wm_input_mouse(300, 200, 0);
+    wm_input_mouse(310, 210, 0);
+    wm_input_mouse(320, 220, 0);
+    check(wm_poll_event(&ev) && ev.type == WM_EVENT_POINTER && ev.x == 320 &&
+              ev.y == 220 - t->headerbar_h && !ev.changed && !wm_poll_event(&ev),
+          "pointer moves reach the app, merged into the latest position");
+    wm_input_mouse(320, 220, MOUSE_LEFT);
+    wm_input_mouse(330, 220, MOUSE_LEFT);
+    wm_input_mouse(330, 220, 0);
+    int ok_down = wm_poll_event(&ev) && ev.type == WM_EVENT_POINTER && ev.changed == MOUSE_LEFT &&
+                  ev.buttons == MOUSE_LEFT;
+    while (ok_down && wm_poll_event(&ev) && ev.type != WM_EVENT_POINTER)
+        ;                       /* the CLICK convenience event sits in between */
+    int ok_drag = ev.type == WM_EVENT_POINTER && ev.x == 330 && !ev.changed;
+    int ok_up = wm_poll_event(&ev) && ev.type == WM_EVENT_POINTER && ev.changed == MOUSE_LEFT &&
+                !ev.buttons;
+    check(ok_down && ok_drag && ok_up, "press, drag and release arrive in order");
 
     struct key_event k = { .key = 0x1e, .pressed = 1, .ascii = 'a' };
     wm_input_key(&k);

@@ -115,6 +115,31 @@ void gfx_fill_circle(struct gfx_surface *s, int cx, int cy, int r, uint32_t colo
     gfx_fill_round_rect(s, cx - r, cy - r, 2 * r, 2 * r, r, colour);
 }
 
+void gfx_round_corners(struct gfx_surface *s, int x, int y, int w, int h, int r, uint32_t outside)
+{
+    if (w <= 0 || h <= 0)
+        return;
+    if (r > w / 2)
+        r = w / 2;
+    if (r > h / 2)
+        r = h / 2;
+    for (int dy = 0; dy < r; dy++) {
+        int in = corner_inset(r, dy);
+        gfx_fill_rect(s, x, y + dy, in, 1, outside);
+        gfx_fill_rect(s, x + w - in, y + dy, in, 1, outside);
+        gfx_fill_rect(s, x, y + h - 1 - dy, in, 1, outside);
+        gfx_fill_rect(s, x + w - in, y + h - 1 - dy, in, 1, outside);
+    }
+}
+
+struct gfx_surface gfx_sub(const struct gfx_surface *s, struct gfx_rect r)
+{
+    r = gfx_rect_intersect(r, (struct gfx_rect){ 0, 0, s->w, s->h });
+    if (gfx_rect_empty(r))
+        return (struct gfx_surface){ s->px, 0, 0, s->stride };
+    return (struct gfx_surface){ s->px + r.y * s->stride + r.x, r.w, r.h, s->stride };
+}
+
 void gfx_blit(struct gfx_surface *dst, int dx, int dy,
               const struct gfx_surface *src, int sx, int sy, int w, int h)
 {
@@ -138,6 +163,22 @@ static uint32_t mix(uint32_t a, uint32_t b, uint32_t alpha)
 {
     uint32_t v = a * alpha + b * (255 - alpha) + 128;
     return (v + (v >> 8)) >> 8;
+}
+
+uint32_t gfx_mix(uint32_t a, uint32_t b, uint32_t alpha)
+{
+    return mix(a >> 16 & 0xff, b >> 16 & 0xff, alpha) << 16 |
+           mix(a >> 8 & 0xff, b >> 8 & 0xff, alpha) << 8 | mix(a & 0xff, b & 0xff, alpha);
+}
+
+void gfx_darken(struct gfx_surface *s, int x, int y, int w, int h, uint32_t alpha)
+{
+    struct gfx_rect r = clip(s, x, y, w, h);
+    for (int row = r.y; row < r.y + r.h; row++) {
+        uint32_t *p = s->px + row * s->stride;
+        for (int col = r.x; col < r.x + r.w; col++)
+            p[col] = gfx_mix(0, p[col], alpha);
+    }
 }
 
 void gfx_blit_alpha(struct gfx_surface *dst, int dx, int dy,

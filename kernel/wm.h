@@ -32,13 +32,18 @@ enum wm_event_type {
     WM_EVENT_CLICK,         /* x, y (content coordinates), buttons: a button went down */
     WM_EVENT_HEADER,        /* id: one of the app's header buttons was pressed */
     WM_EVENT_CLOSE,         /* the close button was pressed: the app should wm_close() */
+    WM_EVENT_POINTER,       /* x, y (content coordinates; y < 0 over the header bar),
+                             * buttons held, changed: the pointer moved or a button
+                             * changed. Moves are merged while nothing changes. */
 };
 
 struct wm_event {
     enum wm_event_type type;
     int x, y;
     uint8_t buttons;
+    uint8_t changed;        /* POINTER: MOUSE_* bits that went down or up */
     int id;
+    uint32_t time_ms;       /* when it happened (uptime), for double-clicks */
     struct key_event key;
 };
 

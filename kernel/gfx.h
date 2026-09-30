@@ -43,6 +43,19 @@ void gfx_line(struct gfx_surface *s, int x0, int y0, int x1, int y1, uint32_t co
 void gfx_fill_round_rect(struct gfx_surface *s, int x, int y, int w, int h, int r, uint32_t colour);
 void gfx_fill_circle(struct gfx_surface *s, int cx, int cy, int r, uint32_t colour);
 
+/* Paint `outside` over the four corners of (x, y, w, h) beyond a radius-r
+ * curve: rounds a card after drawing its contents square. */
+void gfx_round_corners(struct gfx_surface *s, int x, int y, int w, int h, int r, uint32_t outside);
+
+/* A surface that is part of s (clipped to it): drawing into it is clipped
+ * to r and uses r's top-left as (0, 0). */
+struct gfx_surface gfx_sub(const struct gfx_surface *s, struct gfx_rect r);
+
+/* Colour a over b at alpha (0..255), e.g. Adwaita's "white at 10%". */
+uint32_t gfx_mix(uint32_t a, uint32_t b, uint32_t alpha);
+/* Blend a rectangle towards black (alpha 0..255): dims what's behind a dialog. */
+void gfx_darken(struct gfx_surface *s, int x, int y, int w, int h, uint32_t alpha);
+
 /* Copy a w x h block from src (at sx, sy) to dst (at dx, dy). Opaque. */
 void gfx_blit(struct gfx_surface *dst, int dx, int dy,
               const struct gfx_surface *src, int sx, int sy, int w, int h);

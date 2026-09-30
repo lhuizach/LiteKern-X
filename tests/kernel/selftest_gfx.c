@@ -242,6 +242,36 @@ static uint32_t ms_x10(uint64_t ticks, uint32_t n)
     return tsc_to_ms(ticks * 10 / n);
 }
 
+/* The timings, also drawn on the pattern: the EeePC has no serial port and
+ * the log is hidden during this test, so the screen is the only way to read
+ * them there. */
+static char results[2][96];
+
+static char *append(char *p, const char *s)
+{
+    while (*s)
+        *p++ = *s++;
+    *p = '\0';
+    return p;
+}
+
+/* "label N.N ms" for a value in tenths of a millisecond. */
+static char *append_ms(char *p, const char *label, uint32_t x10)
+{
+    char digits[12];
+    int n = 0;
+    uint32_t v = x10 / 10;
+    do
+        digits[n++] = (char)('0' + v % 10);
+    while (v /= 10);
+    p = append(p, label);
+    while (n)
+        *p++ = digits[--n];
+    *p++ = '.';
+    *p++ = (char)('0' + x10 % 10);
+    return append(p, " ms  ");
+}
+
 static void benchmark(void)
 {
     struct gfx_surface *scr = screen_surface();
@@ -275,6 +305,10 @@ static void benchmark(void)
             "present 32x32 %u.%u ms, 1000 glyphs %u.%u ms\n",
             scr->w, scr->h, fill / 10, fill % 10, full / 10, full % 10,
             small / 10, small % 10, glyphs / 10, glyphs % 10);
+    char *p = append_ms(results[0], "fill back buffer ", fill);
+    append_ms(p, "present full screen ", full);
+    p = append_ms(results[1], "present 32x32 ", small);
+    append_ms(p, "1000 glyphs ", glyphs);
 }
 
 /* Left on screen for the screenshot / photo. */
@@ -301,6 +335,9 @@ static void test_pattern(void)
     for (int c = 32; c < 127; c++)
         gfx_char(scr, 16 + ((c - 32) % 48) * 10, 320 + ((c - 32) / 48) * 20, (char)c, 0xc8d0dc,
                  GFX_TRANSPARENT);
+    gfx_text(scr, 16, 400, "timings (photo these):", 0xffffff, GFX_TRANSPARENT);
+    gfx_text(scr, 16, 420, results[0], 0xffffff, GFX_TRANSPARENT);
+    gfx_text(scr, 16, 440, results[1], 0xffffff, GFX_TRANSPARENT);
     screen_damage_all();
     screen_present();
 }
