@@ -36,13 +36,17 @@ def shot(sock_path, out):
 def keys(sock_path, names):
     """Each name is a QEMU sendkey key ("a", "shift-a", "ret"), or one of
     move:DX,DY / press:BUTTONS / release (monitor mouse_move / mouse_button;
-    sleep:SECONDS pauses;
+    sleep:SECONDS pauses; gap:SECONDS sets the pause after each step (default 0.15);
     BUTTONS is QEMU's mask: 1 left, 2 right, 4 middle)."""
     s = socket.socket(socket.AF_UNIX)
     s.connect(sock_path)
+    gap = 0.15
     for name in names:
         if name.startswith("sleep:"):       # sleep:SECONDS, between steps
             time.sleep(float(name[6:]))
+            continue
+        if name.startswith("gap:"):         # gap:SECONDS between the steps after it
+            gap = float(name[4:])
             continue
         if name.startswith("move:"):
             cmd = "mouse_move " + name[5:].replace(",", " ")

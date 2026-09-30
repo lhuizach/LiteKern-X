@@ -2,6 +2,7 @@
 #include "kernel/errno.h"
 #include "kernel/io.h"
 #include "kernel/kern86_abi.h"
+#include "kernel/pmm.h"
 #include "kernel/printk.h"
 #include "kernel/ramdisk.h"
 #include "kernel/string.h"
@@ -14,6 +15,8 @@
 /* Strings for the registered apps (struct app points into these). */
 static struct {
     char name[24], icon[24], path[PATH_MAX];
+    int order;              /* "order" in kerns.json: lower comes first (default 100) */
+    uint32_t size;
 } found[APPS_MAX];
 static int nfound;
 
@@ -48,6 +51,26 @@ static int json_str(const char *json, const char *key, char *out, int max)
         return *p == '"' && n > 0;
     }
     return 0;
+}
+
+/* The whole-number value of "key", or `fallback` if absent. */
+static int json_int(const char *json, const char *key, int fallback)
+{
+    int klen = (int)strlen(key);
+    for (const char *p = json; *p; p++) {
+        if (*p != '"' || strncmp_(p + 1, key, klen) || p[1 + klen] != '"')
+            continue;
+        p += 2 + klen;
+        while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r' || *p == ':')
+            p++;
+        if (*p < '0' || *p > '9')
+            return fallback;
+        int v = 0;
+        while (*p >= '0' && *p <= '9' && v < 100000)
+            v = v * 10 + (*p++ - '0');
+        return v;
+    }
+    return fallback;
 }
 
 static int ends_with(const char *s, const char *tail)
@@ -87,11 +110,9 @@ static void register_one(const char *manifest_name)
         kprintf("lkx: %s: its program %s isn't in the ramdisk\n", manifest_name, f->path);
         return;
     }
-    struct app a = { .name = f->name, .icon = f->icon, .lkx = f->path };
-    if (apps_add(&a) == 0) {
-        nfound++;
-        kprintf("lkx: %s (%s, %u KB)\n", f->name, f->path, prog_size / 1024);
-    }
+    f->order = json_int(json, "order", 100);
+    f->size = prog_size;
+    nfound++;
 }
 
 void lkx_register_all(void)
@@ -101,6 +122,22 @@ void lkx_register_all(void)
         const char *n = ramdisk_name(i);
         if (n && !strncmp_(n, "apps/", 5) && ends_with(n, "/kerns.json"))
             register_one(n);
+    }
+    /* By "order", keeping the ramdisk's order for equal ones (insertion sort). */
+    int idx[APPS_MAX];
+    for (int i = 0; i < nfound; i++) {
+        int j = i;
+        while (j > 0 && found[idx[j - 1]].order > found[i].order) {
+            idx[j] = idx[j - 1];
+            j--;
+        }
+        idx[j] = i;
+    }
+    for (int k = 0; k < nfound; k++) {
+        typeof(found[0]) *f = &found[idx[k]];
+        struct app a = { .name = f->name, .icon = f->icon, .lkx = f->path };
+        if (apps_add(&a) == 0)
+            kprintf("lkx: %s (%s, %u KB)\n", f->name, f->path, f->size / 1024);
     }
     if (!nfound)
         kprintf("lkx: no apps in the ramdisk\n");
@@ -130,6 +167,7 @@ void lkx_run(const struct app *a)
         return;
     }
     sys_app_start(a->name);
+    uint32_t free_before = pmm_free_frames();
     struct user_result res;
     uint32_t flags;
     __asm__ volatile("pushf; pop %0" : "=r"(flags));
@@ -145,4 +183,6 @@ void lkx_run(const struct app *a)
                 exception_name(res.vector));
     else
         kprintf("lkx: %s exited (%d)\n", a->name, res.exit_code);
+    /* Everything an app had must come back (the stability tests check it). */
+    kprintf("lkx: memory free %u KiB before, %u KiB after\n", free_before * 4, pmm_free_frames() * 4);
 }
