@@ -7,7 +7,8 @@ Two kinds of asset, made two ways:
 | **Cursors** (§3) | **PNG images**, 32×32 | A text AI types a pixel grid that `tools/cursor-grid2png.py` converts, or a pixel editor (Piskel, Aseprite, GIMP) |
 | **App icons** (§4) | **PNG images**, 48×48 | An image AI or a pixel editor, in the Adwaita style (§4.2) |
 | **Wallpapers** (§8) | **PNG images**, 1024×600 | An image AI, cropped to size (§8.2) |
-| UI glyphs, logo (§5–§6) | SVG | A text AI that writes SVG code (ChatGPT, Claude, Gemini), using the prompts below |
+| Logo (§6) | **PNG**, 128×128 | Done: `assets/logo.png` |
+| UI glyphs (§5) | SVG | A text AI that writes SVG code (ChatGPT, Claude, Gemini), using the prompts below |
 
 All of them are turned into bitmaps for the kernel **at build time**, by a script, so the kernel never parses PNG or SVG itself.
 
@@ -24,7 +25,7 @@ assets/
   icons/        <app>.png            one 48x48 PNG per app (§4)
   icons.json    which icons exist (§4.1)
   icons/ui/     close.svg, minimise.svg, check.svg, ... (16x16)
-  logo.svg      optional, 128x128
+  logo.png      128x128 RGBA (done, §6)
   wallpapers/   <name>.png, <name>-light.png   1024x600 (§8)
 ```
 **File names:** lowercase letters, digits and hyphens only (`resize-d1.png`, `text-editor.svg`).
@@ -59,7 +60,7 @@ Use **only** these 8 colours, plus transparency:
 | App icons | **48×48** | `assets/icons/<app>.png` | RGBA PNG, Adwaita style (§4). |
 | UI glyphs | 16×16 | `assets/icons/ui/<name>.svg` | Title-bar buttons, checkboxes and similar |
 | Wallpapers | **1024×600** | `assets/wallpapers/<name>.png` | RGB PNG, 300 KB or less (hard limit 512 KB), dark behind the app grid (§8). |
-| Logo (optional) | 128×128 | `assets/logo.svg` | For the Phase 4 website, and it can be the boot splash (the boot budget is now ≤ 5 s, see `docs/BOOT-BUDGET.md`). |
+| Logo | 128×128 | `assets/logo.png` | **Done.** RGBA PNG, for the boot splash (Phase 3) and the Phase 4 website. |
 
 ---
 
@@ -297,7 +298,10 @@ Disabled state: don't make separate files. The renderer draws any glyph at 50% o
 
 ---
 
-## 6. Logo (optional, SVG, for the Phase 4 website)
+## 6. Logo (done: `assets/logo.png`, 2026-09-30)
+
+**Made:** `assets/logo.png`, a 128×128 RGBA PNG. It's a navy rounded square with a sky-blue bar crossing a light grey bar to form the "X". It's used for the Phase 3 boot splash and the Phase 4 website. It stays a PNG, like the other images, and is converted at build time when Phase 3 needs it. The prompt it was based on is kept below for reference, and for any redraws at other sizes.
+
 ```text
 [Rules block first]
 Make assets/logo.svg, 128x128: the LiteKern X logo. A navy (#1E3A5F) rounded square
