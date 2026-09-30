@@ -17,6 +17,10 @@ int console_init(uint32_t font_addr);
 int console_active(void);
 void console_putc(char c);
 
+/* Show what console_putc drew since the last flush (kprintf calls this once
+ * per message, so a line costs one screen update, not one per character). */
+void console_flush(void);
+
 /* Change colours and redraw everything (used for the ready/panic status). */
 void console_set_colours(uint32_t fg, uint32_t bg);
 

@@ -11,10 +11,13 @@
 static char log_buf[16 * 1024];
 static uint32_t log_len;
 static int panicking;
+static int serial_only;     /* kdebugf(): serial, not the log or the screen */
 
 static void out(char c)
 {
     serial_putc(c);
+    if (serial_only)
+        return;
     if (log_len < sizeof(log_buf))
         log_buf[log_len++] = c;
     if (panicking < 2)
@@ -115,6 +118,7 @@ void kwrite(const char *s, unsigned n)
 {
     while (n--)
         out(*s++);
+    console_flush();
 }
 
 void kprintf(const char *fmt, ...)
@@ -122,6 +126,17 @@ void kprintf(const char *fmt, ...)
     va_list ap;
     va_start(ap, fmt);
     vkprintf(fmt, ap);
+    va_end(ap);
+    console_flush();        /* one screen update per message, not per character */
+}
+
+void kdebugf(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    serial_only = 1;
+    vkprintf(fmt, ap);
+    serial_only = 0;
     va_end(ap);
 }
 

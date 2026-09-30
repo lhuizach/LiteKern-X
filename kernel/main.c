@@ -127,11 +127,14 @@ static void handle_window_events(void)
     }
 }
 
-static void log_pointer(int x, int y, uint8_t buttons)
+/* Clicks go on screen; plain movement goes to serial only (the tests read it
+ * there), as the cursor already shows it and each logged line used to cost a
+ * console scroll, which made the cursor stutter on the EeePC. */
+static void log_pointer(int x, int y, uint8_t buttons, int on_screen)
 {
-    kprintf("mouse: (%d, %d) buttons %c%c%c\n", x, y,
-            buttons & MOUSE_LEFT ? 'L' : '-', buttons & MOUSE_MIDDLE ? 'M' : '-',
-            buttons & MOUSE_RIGHT ? 'R' : '-');
+    void (*log)(const char *, ...) = on_screen ? kprintf : kdebugf;
+    log("mouse: (%d, %d) buttons %c%c%c\n", x, y, buttons & MOUSE_LEFT ? 'L' : '-',
+        buttons & MOUSE_MIDDLE ? 'M' : '-', buttons & MOUSE_RIGHT ? 'R' : '-');
 }
 
 static void __attribute__((noreturn)) idle(const struct boot_info *bi)
@@ -145,8 +148,8 @@ static void __attribute__((noreturn)) idle(const struct boot_info *bi)
     if (kbd && kbd->state == DEVICE_BOUND)
         kprintf("kbd: ready; key presses are logged below (PgUp/PgDn/Home/End scroll the log)\n");
     if (mouse && mouse->state == DEVICE_BOUND) {
-        kprintf("mouse: ready; pointer starts at the centre, movement and buttons logged below\n");
-        log_pointer(x, y, buttons);
+        kprintf("mouse: ready; pointer starts at the centre, clicks logged below\n");
+        log_pointer(x, y, buttons, 1);
     }
 
     for (;;) {
@@ -179,7 +182,7 @@ static void __attribute__((noreturn)) idle(const struct boot_info *bi)
             moved |= moves[i].dx || moves[i].dy;
             if (moves[i].buttons != buttons) {      /* clicks are always logged */
                 buttons = moves[i].buttons;
-                log_pointer(x, y, buttons);
+                log_pointer(x, y, buttons, 1);
                 moved = 0;
                 last_log = uptime_ms();
             }
@@ -188,7 +191,7 @@ static void __attribute__((noreturn)) idle(const struct boot_info *bi)
             cursor_move_to(x, y);   /* once per batch: two small screen updates */
         handle_window_events();
         if (moved && uptime_ms() - last_log >= MOUSE_LOG_MS) {
-            log_pointer(x, y, buttons);
+            log_pointer(x, y, buttons, 0);
             moved = 0;
             last_log = uptime_ms();
         } else if (moved) {

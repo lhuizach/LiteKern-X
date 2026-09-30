@@ -77,11 +77,13 @@ static int blit(const struct fb_blit *b)
     uint32_t w = b->w, h = b->h;
     if (!clip(b->x, b->y, &w, &h))
         return 0;
+    /* One `rep movsd` per row: the CPU streams the row into the
+     * write-combining buffers, rather than a loop storing a word at a time. */
     for (uint32_t row = 0; row < h; row++) {
-        volatile uint32_t *dst = (volatile uint32_t *)(fb.base + (b->y + row) * fb.pitch) + b->x;
-        const uint32_t *src = b->pixels + row * b->stride;
-        for (uint32_t col = 0; col < w; col++)
-            dst[col] = src[col];
+        void *dst = (void *)((volatile uint32_t *)(fb.base + (b->y + row) * fb.pitch) + b->x);
+        const void *src = b->pixels + row * b->stride;
+        uint32_t n = w;
+        __asm__ volatile("rep movsl" : "+D"(dst), "+S"(src), "+c"(n) : : "memory");
     }
     return 0;
 }

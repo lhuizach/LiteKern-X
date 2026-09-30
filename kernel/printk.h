@@ -10,6 +10,10 @@
 void kprintf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void vkprintf(const char *fmt, va_list ap);
 
+/* Like kprintf, but to serial only: for chatty diagnostics (e.g. pointer
+ * positions) that the tests read but that would cost screen redraws. */
+void kdebugf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+
 /* Write exactly n bytes (no formatting, no NUL needed). */
 void kwrite(const char *s, unsigned n);
 

@@ -37,17 +37,23 @@ static uint32_t top(void)
     return bottom_top - scrollback;
 }
 
-/* Draw one cell into the screen's back buffer (not presented yet). */
+/* Draw one cell into the screen's back buffer (presented by console_flush). */
 static void cell(uint32_t c, uint32_t r, uint8_t ch, uint32_t f, uint32_t b)
 {
     gfx_char(screen_surface(), (int)(c * GLYPH_W), (int)(r * GLYPH_H), (char)ch, f, b);
     screen_damage((int)(c * GLYPH_W), (int)(r * GLYPH_H), GLYPH_W, GLYPH_H);
 }
 
-static void draw_glyph(uint32_t c, uint32_t r, uint8_t ch, uint32_t f, uint32_t b)
+/* Scroll the live view up a line by moving the pixels already drawn, rather
+ * than drawing every character again (v1's approach, and far cheaper on the
+ * Atom). gfx_blit copies rows top to bottom, so moving up in place is safe. */
+static void scroll_up(void)
 {
-    cell(c, r, ch, f, b);
-    screen_present();
+    struct gfx_surface *s = screen_surface();
+    int text_h = (int)(rows * GLYPH_H);
+    gfx_blit(s, 0, 0, s, 0, GLYPH_H, s->w, text_h - GLYPH_H);
+    gfx_fill_rect(s, 0, text_h - GLYPH_H, s->w, GLYPH_H, bg);
+    screen_damage(0, 0, s->w, text_h);
 }
 
 static void draw_indicator(void)
@@ -85,7 +91,7 @@ static void newline(void)
         scrollback = 0;         /* new output returns to the live view */
         redraw();
     } else if (line >= rows) {
-        redraw();               /* scroll */
+        scroll_up();
     }
 }
 
@@ -111,7 +117,7 @@ static void put(char c)
     }
     text(line)[col] = c;
     if (drawing())
-        draw_glyph(col, line - top(), (uint8_t)c, fg, bg);
+        cell(col, line - top(), (uint8_t)c, fg, bg);
     col++;
 }
 
@@ -146,6 +152,12 @@ void console_putc(char c)
 {
     if (active)
         put(c);
+}
+
+void console_flush(void)
+{
+    if (drawing())
+        screen_present();
 }
 
 void console_set_visible(int visible)
