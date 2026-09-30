@@ -238,6 +238,17 @@ check "window system: clicking the close button closes the window, the desktop c
     "^screen: corner $DESKTOP$" \
     '!PANIC'
 
+# Clicks are logged; the hidden log must not draw over the desktop (it did:
+# each logged click scrolled the log onto the screen).
+KEYS="move:30,30 press:1 release press:1 release press:1 release" KEYS_DONE='^mouse: \(542, 414\) buttons ---' \
+SCREEN="corner= has=$TEXT@0,0,1024,768" \
+    boot_until build/litekernx.img "$done_re" 20
+check "desktop: logged clicks don't draw the log over it" \
+    '^mouse: \(542, 414\) buttons L--$' \
+    "^screen: corner $DESKTOP$" \
+    "^screen: has $TEXT in 0,0,1024,768: no$" \
+    '!PANIC'
+
 # Desktop: the app grid is centred under the top bar; with two apps on the
 # 1024-wide screen, Files is the tile at 400-512 and Log at 512-624, from
 # y=78. The pointer starts at 512,384; the close button is at 1001,23.

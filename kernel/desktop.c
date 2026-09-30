@@ -1,5 +1,6 @@
 #include "kernel/desktop.h"
 #include "kernel/apps.h"
+#include "kernel/console.h"
 #include "kernel/font.h"
 #include "kernel/icon.h"
 #include "kernel/input.h"
@@ -82,6 +83,7 @@ void desktop_show(void)
         return;
     struct gfx_surface *s = screen_surface();
     hover = pressed = -1;
+    console_set_visible(0);     /* the log keeps recording, but no longer draws over us */
     gfx_fill_rect(s, 0, 0, s->w, s->h, theme_get()->desktop_bg);
     draw_topbar();
     for (int i = 0; i < builtin_app_count; i++)
