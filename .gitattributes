@@ -3,3 +3,6 @@
 *.img binary
 *.iso binary
 *.bin binary
+# The FAT32 partition's starting files: byte-exact (CRLF, as Windows users expect;
+# tests/fat checks their sizes).
+assets/disk/** -text
