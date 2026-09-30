@@ -161,14 +161,15 @@ check "enumerates QEMU's PCI devices" \
     '^pci 00:02\.0 1234:1111 class 03\.00\.00 rev [0-9a-f]{2} VGA controller$' \
     '^pci: [0-9]+ devices on 1 buses$'
 
-check "binds the COM1, display, keyboard and touchpad drivers" \
+check "binds the drivers (COM1, display, keyboard, touchpad, clock, disks)" \
     '^dev com1 driver=uart16550 bound$' \
     '^dev fb0 driver=vbefb bound$' \
     '^dev kbd0 driver=ps2kbd bound$' \
     '^dev mouse0 driver=ps2mouse bound$' \
     '^dev rtc0 driver=cmos-rtc bound$' \
     '^dev boot0 driver=bios-disk bound$' \
-    '^drivers: 6 registered, 6 devices bound, 0 failed; [0-9]+ PCI devices without a driver$'
+    '^ata0: no internal disk \(only the one we booted from\)$' \
+    '^drivers: 7 registered, 6 devices bound, 1 failed; [0-9]+ PCI devices without a driver$'
 
 check "boots to the desktop (top bar, dock, wallpaper)" \
     '^console: 128x48 characters, video BIOS font at 0x[0-9a-f]{5}$' \
@@ -377,6 +378,26 @@ check "BIOS disk: reads, refuses past the end, writes that reach the disk" \
     '^selftest: disk ([0-9]+)/\1 passed$' \
     '^image: last sector written$' \
     '!selftest: FAIL|PANIC'
+
+# The internal disk (ATA, read-only): a second IDE disk with a FAT32 and an
+# "NTFS" partition. Files starts at Places (three partitions); the internal
+# FAT32 one opens read-only (Ctrl+N does nothing), the NTFS one won't open.
+# The disk image must come out byte for byte unchanged.
+mkdir -p build/test-ata
+bash tests/kernel/make-internal-disk.sh build/test-ata/internal.img
+before=$(md5sum < build/test-ata/internal.img)
+KEYS="move:-60,344 press:1 release down down ret ctrl-n x ret backspace down ret" \
+KEYS_DONE='^files: .* is not supported' boot_until build/litekernx.img "$done_re" 30 \
+    -drive file=build/test-ata/internal.img,format=raw,if=ide,index=1
+[ "$before" = "$(md5sum < build/test-ata/internal.img)" ] && out+=$'\n'"image: unchanged" || out+=$'\n'"image: CHANGED"
+check "ATA internal disk: found, FAT32 read-only, NTFS left alone, never written" \
+    '^ata0: QEMU HARDDISK, [0-9]+ MiB, primary slave \(read-only\)$' \
+    '^storage: ata0 partition at 2048 \(FAT32\): FAT32, read-only$' \
+    '^storage: ata0 partition at 133120 \(NTFS or exFAT\): not supported, left alone$' \
+    '^files: open Internal disk \(WINDOWS\)$' \
+    '^files: Internal disk is not supported \(NTFS or exFAT\)$' \
+    '^image: unchanged$' \
+    '!files: create|PANIC'
 
 boot_until build/test-drivers/litekernx.img "$selftest_done_re" 20
 check "driver layer + display driver self-test" \

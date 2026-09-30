@@ -13,6 +13,7 @@ extern const driver_t kbd_driver;
 extern const driver_t mouse_driver;
 extern const driver_t rtc_driver;
 extern const driver_t bios_disk_driver;
+extern const driver_t ata_driver;
 
 /* Register every built-in driver (before any binding happens). */
 void drivers_register(void);

@@ -23,7 +23,7 @@
 
 struct item {
     struct fat_entry e;
-    char detail[20];
+    char detail[40];
 };
 
 static struct item items[MAX_ITEMS];
@@ -202,7 +202,7 @@ static void row(void *ctx, int i, struct wg_row *out)
     (void)ctx;
     out->name = items[i].e.name;
     out->detail = items[i].detail;
-    out->icon = items[i].e.is_dir || !vol ? WG_ICON_FOLDER : WG_ICON_FILE;
+    out->icon = items[i].e.is_dir ? WG_ICON_FOLDER : vol ? WG_ICON_FILE : WG_ICON_NONE;
 }
 
 static void layout(void)
@@ -319,6 +319,7 @@ static void activate(int i)
     if (!vol) {
         struct storage *s = storage_get(i);
         if (!s || !s->supported) {
+            kprintf("files: %s is not supported (%s)\n", items[i].e.name, s ? s->why_not : "?");
             set_status("LiteKern X can only open FAT32 disks; this one is left alone.", 1);
             draw_status();
             wm_present();
