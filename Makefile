@@ -51,9 +51,17 @@ $(BUILD)/%.o: %.c
 $(BUILD)/%.asm.o: %.asm boot/bootinfo.inc
 	@mkdir -p $(dir $@)
 	nasm -f elf32 -I./ -DUSER_BIN_DIR='"$(BUILD)/tests/kernel/user"' \
-		-DWALLPAPER_FILE='"$(BUILD)/gen/wallpaper.lkxw"' -o $@ $<
+		-DWALLPAPER_FILE='"$(BUILD)/gen/wallpaper.lkxw"' \
+		-DBIOS_THUNK_FILE='"$(BUILD)/bios_thunk.bin"' -o $@ $<
 
 $(BUILD)/kernel/wallpaper_data.asm.o: $(BUILD)/gen/wallpaper.lkxw
+$(BUILD)/kernel/bios_thunk_blob.asm.o: $(BUILD)/bios_thunk.bin
+
+# The real-mode BIOS disk thunk: a flat binary the kernel carries and copies
+# to low memory (drivers/bios_disk.c).
+$(BUILD)/bios_thunk.bin: boot/bios_thunk.asm
+	@mkdir -p $(dir $@)
+	$(NASM) -o $@ $<
 
 $(BUILD)/gen/wallpaper.lkxw: $(WALLPAPER) tools/wallpaper-pack.py tools/lkx_png.py
 	@mkdir -p $(dir $@)

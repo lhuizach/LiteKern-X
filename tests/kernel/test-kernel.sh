@@ -34,11 +34,14 @@ make -s BUILD=build/test-wm EXTRA_CFLAGS=-DLKX_SELFTEST_WM EXTRA_KERNEL_SRCS=tes
     build/test-wm/litekernx.img >/dev/null || exit 1
 # A kernel whose packed wallpaper has one byte damaged: it must notice (the
 # checksum, or inflate's own checks) and fall back to the plain colour.
+rm -f build/test-wallpaper-bad/gen/wallpaper.lkxw     # fresh each run: flipping twice undoes it
 make -s BUILD=build/test-wallpaper-bad build/test-wallpaper-bad/gen/wallpaper.lkxw >/dev/null || exit 1
 python3 -c "
 import sys; p = sys.argv[1]; d = bytearray(open(p, 'rb').read())
 d[len(d) // 2] ^= 0x5a; open(p, 'wb').write(bytes(d))" build/test-wallpaper-bad/gen/wallpaper.lkxw
 make -s BUILD=build/test-wallpaper-bad build/test-wallpaper-bad/litekernx.img >/dev/null || exit 1
+make -s BUILD=build/test-disk EXTRA_CFLAGS=-DLKX_SELFTEST_DISK \
+    EXTRA_KERNEL_SRCS=tests/kernel/selftest_disk.c build/test-disk/litekernx.img >/dev/null || exit 1
 make -s BUILD=build/test-widgets EXTRA_CFLAGS=-DLKX_SELFTEST_WIDGETS \
     EXTRA_KERNEL_SRCS=tests/kernel/selftest_widgets.c build/test-widgets/litekernx.img >/dev/null || exit 1
 
@@ -164,7 +167,8 @@ check "binds the COM1, display, keyboard and touchpad drivers" \
     '^dev kbd0 driver=ps2kbd bound$' \
     '^dev mouse0 driver=ps2mouse bound$' \
     '^dev rtc0 driver=cmos-rtc bound$' \
-    '^drivers: 5 registered, 5 devices bound, 0 failed; [0-9]+ PCI devices without a driver$'
+    '^dev boot0 driver=bios-disk bound$' \
+    '^drivers: 6 registered, 6 devices bound, 0 failed; [0-9]+ PCI devices without a driver$'
 
 check "boots to the desktop (top bar, dock, wallpaper)" \
     '^console: 128x48 characters, video BIOS font at 0x[0-9a-f]{5}$' \
@@ -344,6 +348,22 @@ check "a damaged wallpaper is caught: plain colour instead, no crash" \
     '^wallpaper: corrupt ' \
     "^screen: corner $PLAIN$" \
     '!PANIC'
+
+# The boot disk through the BIOS: a scratch copy of the image with 1 MiB of
+# zeros after it, so the self-test's write to the last sector hits padding.
+# The write is then checked in the image file itself.
+cp build/test-disk/litekernx.img build/test-disk/scratch.img
+truncate -s +1M build/test-disk/scratch.img
+boot_until build/test-disk/scratch.img '^selftest: disk [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$' 30
+out+=$'\n'$(python3 -c "
+import sys; d = open(sys.argv[1], 'rb').read()[-512:]
+ok = d[:4] == b'LKXW' and all(d[i] == (i * 7 + 3) & 255 for i in range(4, 512))
+print('image: last sector', 'written' if ok else 'NOT written')" build/test-disk/scratch.img)
+check "BIOS disk: reads, refuses past the end, writes that reach the disk" \
+    '^dev boot0 driver=bios-disk bound$' \
+    '^selftest: disk ([0-9]+)/\1 passed$' \
+    '^image: last sector written$' \
+    '!selftest: FAIL|PANIC'
 
 boot_until build/test-drivers/litekernx.img "$selftest_done_re" 20
 check "driver layer + display driver self-test" \

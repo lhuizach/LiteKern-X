@@ -12,6 +12,7 @@
 #define ENODEV  19      /* no such device, or device not usable */
 #define EINVAL  22      /* invalid argument */
 #define ENOSPC  28      /* no space left (a buffer, later a disk) */
+#define EROFS   30      /* read-only device or filesystem */
 #define ENOSYS  38      /* operation not supported by this driver */
 
 /* "ENOSYS" for -ENOSYS or ENOSYS; "E?" for anything unknown. */

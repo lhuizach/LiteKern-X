@@ -45,6 +45,9 @@ void selftest_wm_run(void);
 #ifdef LKX_SELFTEST_WIDGETS
 void selftest_widgets_run(void);
 #endif
+#ifdef LKX_SELFTEST_DISK
+void selftest_disk_run(void);
+#endif
 
 /* boot_info and the E820 map live in page 0, which paging leaves unmapped
  * (so null pointers fault): keep the kernel's own copy. */
@@ -265,6 +268,9 @@ void kmain(uint32_t magic, const struct boot_info *handoff)
 #endif
 #ifdef LKX_SELFTEST_WIDGETS
     selftest_widgets_run();
+#endif
+#ifdef LKX_SELFTEST_DISK
+    selftest_disk_run();
 #endif
 #ifdef LKX_SELFTEST_KERNEL_NULL
     kprintf("selftest: kernel null-pointer write\n");

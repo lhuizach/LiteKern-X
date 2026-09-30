@@ -11,6 +11,7 @@ const char *errno_name(int err)
     case ENODEV: return "ENODEV";
     case EINVAL: return "EINVAL";
     case ENOSPC: return "ENOSPC";
+    case EROFS:  return "EROFS";
     case ENOSYS: return "ENOSYS";
     default:     return "E?";
     }

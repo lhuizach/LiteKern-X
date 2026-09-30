@@ -7,6 +7,7 @@ void drivers_register(void)
     driver_add(&kbd_driver);
     driver_add(&mouse_driver);
     driver_add(&rtc_driver);
+    driver_add(&bios_disk_driver);
 }
 
 void drivers_add_legacy_devices(const struct boot_info *bi)
@@ -16,4 +17,5 @@ void drivers_add_legacy_devices(const struct boot_info *bi)
     device_add_legacy(&kbd_driver, "kbd0", 0);
     device_add_legacy(&mouse_driver, "mouse0", 0);
     device_add_legacy(&rtc_driver, "rtc0", 0);
+    device_add_legacy(&bios_disk_driver, "boot0", bi->boot_drive);
 }
