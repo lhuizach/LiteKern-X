@@ -67,6 +67,8 @@ void wm_present(void);
 
 /* Next event for the app; 0 if none. */
 int wm_poll_event(struct wm_event *ev);
+/* Queue a close request, as if the close button had been pressed (Home). */
+void wm_request_close(void);
 
 /* From the input loop. Coordinates are the screen's. */
 void wm_input_key(const struct key_event *key);

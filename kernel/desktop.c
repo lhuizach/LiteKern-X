@@ -16,6 +16,7 @@
 #include "kernel/font.h"
 #include "kernel/icon.h"
 #include "kernel/input.h"
+#include "kernel/lkx.h"
 #include "kernel/power.h"
 #include "kernel/printk.h"
 #include "kernel/rtc.h"
@@ -425,6 +426,7 @@ void desktop_show(void)
 
 void desktop_start(void)
 {
+    apps_init();
     rtc = device_find("rtc0");
     if (rtc && rtc->state != DEVICE_BOUND)
         rtc = 0;
@@ -456,11 +458,22 @@ static void launch(const struct app *a)
     screen_present();
     if (a->open)
         a->open();
+    if (a->lkx) {               /* a ring 3 app: it runs, here, until it exits */
+        lkx_run(a);
+        kprintf("desktop: close %s\n", a->name);
+        running = 0;
+        wm_close();
+        desktop_show();
+    }
 }
 
 /* Close the open window (and its app), back to the desktop. */
 static void close_app(void)
 {
+    if (running && running->lkx) {
+        wm_request_close();     /* the app closes itself (or is ended at its next wait) */
+        return;
+    }
     if (running)
         kprintf("desktop: close %s\n", running->name);
     if (running && running->close)
@@ -620,6 +633,8 @@ static void log_event(const struct wm_event *ev)
 void desktop_handle_events(void)
 {
     struct wm_event ev;
+    if (running && running->lkx)
+        return;                 /* a ring 3 app takes its own (SYS_WAIT_EVENT) */
     while (wm_is_open() && wm_poll_event(&ev)) {
         if (ev.type == WM_EVENT_CLOSE) {
             kprintf("wm: close\n");

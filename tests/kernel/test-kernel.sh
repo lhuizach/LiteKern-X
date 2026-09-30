@@ -42,6 +42,9 @@ d[len(d) // 2] ^= 0x5a; open(p, 'wb').write(bytes(d))" build/test-wallpaper-bad/
 make -s BUILD=build/test-wallpaper-bad build/test-wallpaper-bad/litekernx.img >/dev/null || exit 1
 make -s BUILD=build/test-disk EXTRA_CFLAGS=-DLKX_SELFTEST_DISK \
     EXTRA_KERNEL_SRCS=tests/kernel/selftest_disk.c build/test-disk/litekernx.img >/dev/null || exit 1
+rm -f build/test-apps/litekernx.img build/test-apps/stage1.bin     # FAT_MB isn't a make dependency
+make -s BUILD=build/test-apps FAT_MB=64 "EXTRA_APPS=tests/apps/crash tests/apps/badcalls tests/apps/hang" \
+    build/test-apps/litekernx.img >/dev/null || exit 1
 make -s BUILD=build/test-widgets EXTRA_CFLAGS=-DLKX_SELFTEST_WIDGETS \
     EXTRA_KERNEL_SRCS=tests/kernel/selftest_widgets.c build/test-widgets/litekernx.img >/dev/null || exit 1
 
@@ -174,6 +177,7 @@ check "binds the drivers (COM1, display, keyboard, touchpad, clock, disks)" \
 check "boots to the desktop (top bar, dock, wallpaper)" \
     '^console: 128x48 characters, video BIOS font at 0x[0-9a-f]{5}$' \
     '^wallpaper: 1024x600, [0-9]+ KB packed, unpacked and checked in [0-9]+ ms$' \
+    '^lkx: Files \(apps/files/files\.lkx, [0-9]+ KB\)$' \
     "^screen: corner $DESKTOP$" \
     "^screen: has $WHITE in 0,0,120,30: yes$" \
     '^screen: has 3584e4 in 422,698,482,758: yes$' \
@@ -274,12 +278,13 @@ check "desktop: logged clicks don't draw the log over it" \
 #   top bar: Home 6-46, power 978-1018; y 3-27. Power menu: Restart 844-1012 x 40-74
 #   app menu (two apps, centred above the dock): Files 400-512, Log 512-624; y 311-415
 #   a window's close button: 1001,53
-KEYS="move:-60,344 press:1 release move:549,-675 press:1 release" KEYS_DONE='^wm: close' \
+KEYS="move:-60,344 press:1 release move:549,-675 press:1 release" KEYS_DONE='^desktop: close Files' \
 SCREEN="corner= has=3584e4@422,698,482,758" \
     boot_until build/litekernx.img "$done_re" 20
-check "desktop: the dock opens Files, its close button returns to the desktop" \
+check "desktop: the dock opens Files (a ring 3 app); its close button ends it" \
     '^desktop: open Files$' \
-    '^wm: close$' \
+    '^lkx: Files exited \(0\)$' \
+    '^desktop: close Files$' \
     "^screen: corner $DESKTOP$" \
     '^screen: has 3584e4 in 422,698,482,758: yes$' \
     '!PANIC'
@@ -296,24 +301,24 @@ check "widgets: button, list, entry, dialog (states, input, results)" \
 mkdir -p build/test-files
 cp build/litekernx.img build/test-files/disk.img
 KEYS="move:-60,344 press:1 release ctrl-n h i ret f2 backspace backspace b y e ret ctrl-n b y e ret esc home ret ctrl-n n e w dot t x t ret backspace home down down delete ret" \
-KEYS_DONE='^files: delete bye' boot_until build/test-files/disk.img "$done_re" 40
+KEYS_DONE='^user: files: delete bye' boot_until build/test-files/disk.img "$done_re" 40
 dd if=build/test-files/disk.img of=build/test-files/fat.img bs=512 skip=2048 status=none
 out+=$'\n'$(fsck.fat -n build/test-files/fat.img >/dev/null 2>&1 && echo "fsck: clean" || echo "fsck: ERRORS")
 out+=$'\n'$(MTOOLS_SKIP_CHECK=1 mdir -/ -b -i build/test-files/fat.img ::/ 2>/dev/null | sed 's/^/mtools: /')
 check "Files: create, rename, delete and folders on the FAT32 partition (checked by fsck.fat)" \
     '^storage: boot0 partition at 2048 \(FAT32\): FAT32, read/write$' \
-    '^files: open Boot disk \(LITEKERNX\)$' \
-    '^files: create hi$' \
-    '^files: rename hi -> bye$' \
-    '^files: open folder Documents$' \
-    '^files: create new\.txt$' \
-    '^files: delete bye$' \
+    '^user: files: open Boot disk \(LITEKERNX\)$' \
+    '^user: files: create hi$' \
+    '^user: files: rename hi -> bye$' \
+    '^user: files: open folder Documents$' \
+    '^user: files: create new\.txt$' \
+    '^user: files: delete bye$' \
     '^fsck: clean$' \
     '^mtools: ::/Documents/new\.txt$' \
     '^mtools: ::/Documents/notes\.txt$' \
     '^mtools: ::/Welcome to LiteKern X\.txt$' \
     '!mtools: ::/(hi|bye)$' \
-    '!files: create bye|^files: .* failed|PANIC'
+    '!user: files: create bye|^user: files: .* failed|PANIC'
 
 # The Log app shows the log below the top bar and its header bar (30 + 46 px).
 KEYS="move:0,344 press:1 release a b c d e f g h i j k l m home" KEYS_DONE="^kbd: key 0x026 'l'" \
@@ -337,6 +342,7 @@ KEYS="move:-60,344 press:1 release move:-426,-713 press:1 release" KEYS_DONE='^d
 SCREEN="corner=" boot_until build/litekernx.img "$done_re" 20
 check "shell: Home closes the open app" \
     '^desktop: open Files$' \
+    '^lkx: Files exited \(0\)$' \
     '^desktop: close Files$' \
     "^screen: corner $DESKTOP$" \
     '!PANIC'
@@ -387,17 +393,44 @@ mkdir -p build/test-ata
 bash tests/kernel/make-internal-disk.sh build/test-ata/internal.img
 before=$(md5sum < build/test-ata/internal.img)
 KEYS="move:-60,344 press:1 release down down ret ctrl-n x ret backspace down ret" \
-KEYS_DONE='^files: .* is not supported' boot_until build/litekernx.img "$done_re" 30 \
+KEYS_DONE='^user: files: .* is not supported' boot_until build/litekernx.img "$done_re" 30 \
     -drive file=build/test-ata/internal.img,format=raw,if=ide,index=1
 [ "$before" = "$(md5sum < build/test-ata/internal.img)" ] && out+=$'\n'"image: unchanged" || out+=$'\n'"image: CHANGED"
 check "ATA internal disk: found, FAT32 read-only, NTFS left alone, never written" \
     '^ata0: QEMU HARDDISK, [0-9]+ MiB, primary slave \(read-only\)$' \
     '^storage: ata0 partition at 2048 \(FAT32\): FAT32, read-only$' \
     '^storage: ata0 partition at 133120 \(NTFS or exFAT\): not supported, left alone$' \
-    '^files: open Internal disk \(WINDOWS\)$' \
-    '^files: Internal disk is not supported \(NTFS or exFAT\)$' \
+    '^user: files: open Internal disk \(WINDOWS\)$' \
+    '^user: files: Internal disk is not supported \(NTFS or exFAT\)$' \
     '^image: unchanged$' \
-    '!files: create|PANIC'
+    '!user: files: create|PANIC'
+
+# Misbehaving apps must never take the kernel down (Phase 2 section 5). The test
+# image's dock: Files 332-392, Crash 392-452, Badcalls 452-512, Hang 512-572
+# (y 698-758). Crash writes to address 0; Badcalls passes kernel pointers and
+# nonsense to the calls; Hang spins until the watchdog stops it. Then Files
+# must still open and work.
+KEYS="move:-90,344 press:1 release sleep:1 move:60,0 press:1 release sleep:1 move:60,0 press:1 release sleep:12 move:-180,0 press:1 release sleep:1" \
+KEYS_DONE='^user: files: open' boot_until build/test-apps/litekernx.img "$done_re" 40
+check "apps: a crash, bad calls and a hang each end only the app" \
+    '^user: killed by exception 14 \(#PF page fault\) at eip=0x8' \
+    '^lkx: Crash crashed \(page fault\) and was stopped; the system carries on$' \
+    '^user: badcalls: present before open -22$' \
+    '^user: badcalls: unknown call -38$' \
+    '^user: badcalls: list into kernel memory -14$' \
+    '^user: badcalls: path in kernel memory -14$' \
+    '^user: badcalls: bad volume -19$' \
+    '^user: badcalls: dot-dot path -22$' \
+    '^user: badcalls: missing folder -2$' \
+    '^user: badcalls: bad name -22$' \
+    '^user: badcalls: window into kernel memory -14$' \
+    '^user: badcalls: header with 99 buttons -22$' \
+    '^user: badcalls: font into kernel memory -14$' \
+    '^lkx: Badcalls exited \(7\)$' \
+    '^user: no response for 10 s at eip=0x8' \
+    '^lkx: Hang stopped responding and was stopped$' \
+    '^user: files: open Boot disk' \
+    '!still running|PANIC'
 
 boot_until build/test-drivers/litekernx.img "$selftest_done_re" 20
 check "driver layer + display driver self-test" \

@@ -8,6 +8,7 @@
 #include "kernel/driver.h"
 #include "kernel/screen.h"
 #include "kernel/fb.h"
+#include "kernel/idle.h"
 #include "kernel/gdt.h"
 #include "kernel/mtrr.h"
 #include "kernel/idt.h"
@@ -94,19 +95,86 @@ static void log_pointer(int x, int y, uint8_t buttons, int on_screen)
         buttons & MOUSE_MIDDLE ? 'M' : '-', buttons & MOUSE_RIGHT ? 'R' : '-');
 }
 
+/* The input loop's state: the pointer is the kernel's, whoever runs the loop
+ * (idle() between apps, SYS_WAIT_EVENT while an app waits). */
+static struct {
+    device_t *kbd, *mouse;
+    int w, h, x, y, moved;
+    uint8_t buttons;
+    uint32_t last_log;
+} in;
+
+void idle_step(void)
+{
+    struct key_event keys[8];
+    struct mouse_event moves[16];
+    desktop_tick();         /* the clock: rtc0's IRQ 8 wakes the hlt once a second */
+    /* Check for events with interrupts off, so one arriving between the
+     * check and the hlt can't be missed: `sti; hlt` is atomic. */
+    __asm__ volatile("cli");
+    int nk = dev_read(in.kbd, keys, sizeof(keys));
+    int nm = dev_read(in.mouse, moves, sizeof(moves));
+    if (nk <= 0 && nm <= 0 && !in.moved) {
+        __asm__ volatile("sti; hlt");
+        return;
+    }
+    __asm__ volatile("sti");
+
+    for (int i = 0; i < nk / (int)sizeof(keys[0]); i++) {
+        if (desktop_input_key(&keys[i]))
+            continue;
+        if (wm_is_open())
+            wm_input_key(&keys[i]);
+        else
+            log_key(&keys[i]);
+    }
+
+    for (int i = 0; i < nm / (int)sizeof(moves[0]); i++) {
+        in.x += moves[i].dx;
+        in.y += moves[i].dy;
+        in.x = in.x < 0 ? 0 : in.x >= in.w ? in.w - 1 : in.x;
+        in.y = in.y < 0 ? 0 : in.y >= in.h ? in.h - 1 : in.y;
+        /* Per packet, so no click is lost: the shell first (top bar,
+         * menu, desktop), then the open window. */
+        if (!desktop_input_mouse(in.x, in.y, moves[i].buttons) && wm_is_open())
+            wm_input_mouse(in.x, in.y, moves[i].buttons);
+        in.moved |= moves[i].dx || moves[i].dy;
+        if (moves[i].buttons != in.buttons) {       /* clicks are always logged */
+            in.buttons = moves[i].buttons;
+            log_pointer(in.x, in.y, in.buttons, 1);
+            in.moved = 0;
+            in.last_log = uptime_ms();
+        }
+    }
+    if (nm > 0)
+        cursor_move_to(in.x, in.y);     /* once per batch: two small screen updates */
+    desktop_handle_events();
+    if (in.moved && uptime_ms() - in.last_log >= MOUSE_LOG_MS) {
+        log_pointer(in.x, in.y, in.buttons, 0);
+        in.moved = 0;
+        in.last_log = uptime_ms();
+    } else if (in.moved) {
+        /* Movement not logged yet and no timer IRQ exists to wake us:
+         * spin briefly instead of halting, so the final position of a
+         * gesture still gets logged. */
+        __asm__ volatile("pause");
+    }
+}
+
 static void __attribute__((noreturn)) idle(const struct boot_info *bi)
 {
-    device_t *kbd = device_find("kbd0"), *mouse = device_find("mouse0");
-    int w = (int)bi->fb_width, h = (int)bi->fb_height;
-    int x = w / 2, y = h / 2, moved = 0;
-    uint8_t buttons = 0;
-    uint32_t last_log = 0;
+    in.kbd = device_find("kbd0");
+    in.mouse = device_find("mouse0");
+    in.w = (int)bi->fb_width;
+    in.h = (int)bi->fb_height;
+    in.x = in.w / 2;
+    in.y = in.h / 2;
 
-    if (kbd && kbd->state == DEVICE_BOUND)
+    if (in.kbd && in.kbd->state == DEVICE_BOUND)
         kprintf("kbd: ready; key presses are logged (PgUp/PgDn/Home/End scroll the log)\n");
-    if (mouse && mouse->state == DEVICE_BOUND) {
+    if (in.mouse && in.mouse->state == DEVICE_BOUND) {
         kprintf("mouse: ready; pointer starts at the centre, clicks logged\n");
-        log_pointer(x, y, buttons, 1);
+        log_pointer(in.x, in.y, in.buttons, 1);
     }
 
     /* The boot log stays up while booting (visible progress); then the
@@ -115,62 +183,8 @@ static void __attribute__((noreturn)) idle(const struct boot_info *bi)
 #ifndef LKX_SELFTEST_GFX
     desktop_start();
 #endif
-
-    for (;;) {
-        struct key_event keys[8];
-        struct mouse_event moves[16];
-        desktop_tick();         /* the clock: rtc0's IRQ 8 wakes the hlt once a second */
-        /* Check for events with interrupts off, so one arriving between the
-         * check and the hlt can't be missed: `sti; hlt` is atomic. */
-        __asm__ volatile("cli");
-        int nk = dev_read(kbd, keys, sizeof(keys));
-        int nm = dev_read(mouse, moves, sizeof(moves));
-        if (nk <= 0 && nm <= 0 && !moved) {
-            __asm__ volatile("sti; hlt");
-            continue;
-        }
-        __asm__ volatile("sti");
-
-        for (int i = 0; i < nk / (int)sizeof(keys[0]); i++) {
-            if (desktop_input_key(&keys[i]))
-                continue;
-            if (wm_is_open())
-                wm_input_key(&keys[i]);
-            else
-                log_key(&keys[i]);
-        }
-
-        for (int i = 0; i < nm / (int)sizeof(moves[0]); i++) {
-            x += moves[i].dx;
-            y += moves[i].dy;
-            x = x < 0 ? 0 : x >= w ? w - 1 : x;
-            y = y < 0 ? 0 : y >= h ? h - 1 : y;
-            /* Per packet, so no click is lost: the shell first (top bar,
-             * menu, desktop), then the open window. */
-            if (!desktop_input_mouse(x, y, moves[i].buttons) && wm_is_open())
-                wm_input_mouse(x, y, moves[i].buttons);
-            moved |= moves[i].dx || moves[i].dy;
-            if (moves[i].buttons != buttons) {      /* clicks are always logged */
-                buttons = moves[i].buttons;
-                log_pointer(x, y, buttons, 1);
-                moved = 0;
-                last_log = uptime_ms();
-            }
-        }
-        if (nm > 0)
-            cursor_move_to(x, y);   /* once per batch: two small screen updates */
-        desktop_handle_events();
-        if (moved && uptime_ms() - last_log >= MOUSE_LOG_MS) {
-            log_pointer(x, y, buttons, 0);
-            moved = 0;
-            last_log = uptime_ms();
-        } else if (moved) {
-            /* Movement not logged yet and no timer IRQ exists to wake us:
-             * spin briefly instead of halting, so the final position of a
-             * gesture still gets logged. */
-            __asm__ volatile("pause");
-        }
-    }
+    for (;;)
+        idle_step();
 }
 
 /* How fast the display path is: write-combining makes every framebuffer

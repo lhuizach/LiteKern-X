@@ -104,6 +104,8 @@ void interrupt_handler(struct int_frame *f)
     /* A hardware IRQ is not a fault, whichever ring it interrupted. */
     if (f->vector >= IRQ_BASE_VECTOR && f->vector < IRQ_BASE_VECTOR + IRQ_COUNT) {
         irq_dispatch(f->vector - IRQ_BASE_VECTOR);
+        if (from_user)
+            user_watchdog(f);       /* an app stuck in a loop is stopped */
         return;
     }
 

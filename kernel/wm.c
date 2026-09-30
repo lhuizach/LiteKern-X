@@ -248,6 +248,12 @@ void wm_present(void)
     screen_present();
 }
 
+void wm_request_close(void)
+{
+    if (open)
+        push((struct wm_event){ .type = WM_EVENT_CLOSE });
+}
+
 int wm_poll_event(struct wm_event *ev)
 {
     if (qtail == qhead)

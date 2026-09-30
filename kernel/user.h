@@ -17,7 +17,8 @@
 #define USER_IMAGE_MAX   (1024u * 1024u)
 
 struct user_result {
-    int killed;         /* 1 if a fault ended the program */
+    int killed;         /* 1 if a fault (or the watchdog) ended the program */
+    int hung;           /* 1 if it was the watchdog: no call for 10 s */
     uint32_t vector;    /* the exception that killed it */
     int exit_code;      /* from the exit syscall, when not killed */
 };
@@ -25,6 +26,25 @@ struct user_result {
 /* Load and run `image` (entry point = USER_BASE). Returns 0 once the program
  * has finished (see *res), or -EINVAL / -ENOMEM if it couldn't be started. */
 int user_exec(const void *image, uint32_t size, struct user_result *res);
+
+/* The same, for an app: `bss` zero-filled bytes are mapped after the image,
+ * and it starts at `entry` (inside the image). Interrupts stay on while it
+ * runs, so input keeps arriving. */
+int user_exec_app(const void *image, uint32_t size, uint32_t bss, uint32_t entry,
+                  struct user_result *res);
+
+/* Map fresh zeroed pages for the running program at [virt, virt + bytes)
+ * (e.g. an app's canvas). Pages already mapped are kept. */
+int user_map(uint32_t virt, uint32_t bytes);
+
+/* 1 while a user program runs (the kernel is then inside user_exec). */
+int user_running(void);
+
+/* Every syscall calls user_alive(); every IRQ that interrupts ring 3 calls
+ * user_watchdog(), which stops a program that hasn't made a call for 10 s
+ * (stuck in a loop: nothing else would ever get the machine back). */
+void user_alive(void);
+void user_watchdog(const struct int_frame *f);
 
 /* 0 if [ptr, ptr+len) lies in user space and every page is mapped for ring 3
  * (and writable, if `write`); -EFAULT otherwise. Check before touching any

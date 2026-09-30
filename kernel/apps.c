@@ -1,5 +1,7 @@
 #include "kernel/apps.h"
 #include "kernel/console.h"
+#include "kernel/errno.h"
+#include "kernel/lkx.h"
 #include "kernel/font.h"
 #include "kernel/icon.h"
 #include "kernel/printk.h"
@@ -58,8 +60,21 @@ static void log_close(void)
     status_show(STATUS_READY);      /* the full-screen log's own colours again */
 }
 
-const struct app builtin_apps[] = {
-    { "Files", "files", files_open, files_event, 0 },
-    { "Log", "log", log_open, log_event, log_close },
-};
-const int builtin_app_count = sizeof(builtin_apps) / sizeof(builtin_apps[0]);
+struct app builtin_apps[APPS_MAX];
+int builtin_app_count;
+
+int apps_add(const struct app *a)
+{
+    if (builtin_app_count == APPS_MAX)
+        return -ENOMEM;
+    builtin_apps[builtin_app_count++] = *a;
+    return 0;
+}
+
+void apps_init(void)
+{
+    static const struct app log_app = { "Log", "log", log_open, log_event, log_close, 0 };
+    builtin_app_count = 0;
+    lkx_register_all();
+    apps_add(&log_app);
+}

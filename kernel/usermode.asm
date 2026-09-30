@@ -37,7 +37,7 @@ user_run:
     mov gs, dx
     push USER_DS                    ; ss
     push ecx                        ; esp
-    push 0x002                      ; eflags: IF off (no IRQs yet), IOPL 0
+    push 0x202                      ; eflags: IF on (input keeps arriving), IOPL 0
     push USER_CS                    ; cs
     push eax                        ; eip
     xor eax, eax                    ; don't leak kernel values into ring 3
@@ -68,5 +68,5 @@ align 16
 saved_esp:
     resd 1
 trap_stack:
-    resb 16 * 1024
+    resb 32 * 1024                  ; syscalls run the input loop and FAT32 on it
 trap_stack_top:

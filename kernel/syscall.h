@@ -1,9 +1,10 @@
 /* LiteKern X — system calls (Phase 1 §5).
  *
- * ABI: `int 0x80` from ring 3. EAX = syscall number, EBX / ECX / EDX = args,
- * result in EAX (negative errno on failure). Every other register is
- * preserved. Pointers from user space are checked with user_check() before
- * the kernel touches them.
+ * ABI: `int 0x80` from ring 3. EAX = syscall number, EBX / ECX / EDX / ESI /
+ * EDI = args, result in EAX (negative errno on failure). Every other register
+ * is preserved. Pointers from user space are checked with user_check() before
+ * the kernel touches them. The calls are listed in kernel/kern86_abi.h (the
+ * app ABI); the GUI and file ones are in kernel/sys_app.c.
  *
  *   0  exit(int code)                    does not return
  *   1  debug_write(const char *buf, n)   log "user: <buf>"; n <= 4096;
@@ -17,9 +18,7 @@
 
 #include "kernel/idt.h"
 
-#define SYS_EXIT        0
-#define SYS_DEBUG_WRITE 1
-#define SYS_UPTIME_MS   2
+#include "kernel/kern86_abi.h"
 
 #define DEBUG_WRITE_MAX 4096u
 

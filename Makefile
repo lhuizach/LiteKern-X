@@ -40,6 +40,21 @@ ICON_ASSETS := assets/icons.json $(wildcard assets/icons/*.png)
 # The desktop wallpaper, packed into the kernel (docs/ASSET-PROMPTS.md §8).
 WALLPAPER ?= assets/wallpapers/crossing.png
 
+# KERN86 apps (Phase 2 section 5): each folder in apps/ holds kerns.json and C
+# sources, built against the SDK (sdk/) into a .lkx and packed into the
+# kernel's ramdisk. The SDK carries the kernel's own drawing and widget code.
+# EXTRA_APPS adds app folders from elsewhere (the tests' misbehaving apps).
+EXTRA_APPS   ?=
+APP_PATHS    := $(wildcard apps/*) $(EXTRA_APPS)
+APP_CFLAGS   := -m32 -march=i686 -mtune=bonnell -std=gnu11 -O2 -ffreestanding -fno-pie -fno-pic \
+                -fno-stack-protector -fno-asynchronous-unwind-tables -fcf-protection=none \
+                -mgeneral-regs-only -Wall -Wextra -Werror -I.
+SDK_OBJS     := $(BUILD)/sdk/crt0.asm.o $(BUILD)/sdk/sdk.o $(BUILD)/sdk/gfx.o \
+                $(BUILD)/sdk/widget.o $(BUILD)/sdk/theme.o $(BUILD)/sdk/string.o
+APP_LKX      := $(foreach p,$(APP_PATHS),$(BUILD)/$(p)/$(notdir $(p)).lkx)
+RAMDISK_ARGS := $(foreach p,$(APP_PATHS),apps/$(notdir $(p))/kerns.json=$(p)/kerns.json \
+                apps/$(notdir $(p))/$(notdir $(p)).lkx=$(BUILD)/$(p)/$(notdir $(p)).lkx)
+
 # Ring 3 test programs: flat binaries at USER_BASE, embedded into self-test
 # kernels by tests/kernel/user_programs.asm.
 USER_TEST_BINS := $(patsubst %.asm,$(BUILD)/%.user.bin,$(wildcard tests/kernel/user/*.asm))
@@ -59,9 +74,43 @@ $(BUILD)/%.asm.o: %.asm boot/bootinfo.inc
 	@mkdir -p $(dir $@)
 	nasm -f elf32 -I./ -DUSER_BIN_DIR='"$(BUILD)/tests/kernel/user"' \
 		-DWALLPAPER_FILE='"$(BUILD)/gen/wallpaper.lkxw"' \
-		-DBIOS_THUNK_FILE='"$(BUILD)/bios_thunk.bin"' -o $@ $<
+		-DBIOS_THUNK_FILE='"$(BUILD)/bios_thunk.bin"' \
+		-DRAMDISK_FILE='"$(BUILD)/gen/ramdisk.bin"' -o $@ $<
 
 $(BUILD)/kernel/wallpaper_data.asm.o: $(BUILD)/gen/wallpaper.lkxw
+$(BUILD)/kernel/ramdisk_data.asm.o: $(BUILD)/gen/ramdisk.bin
+
+# --- apps and the ramdisk ------------------------------------------------------
+
+$(BUILD)/sdk/crt0.asm.o: sdk/crt0.asm
+	@mkdir -p $(dir $@)
+	nasm -f elf32 -o $@ $<
+
+$(BUILD)/sdk/sdk.o: sdk/sdk.c
+	@mkdir -p $(dir $@)
+	$(CC) $(APP_CFLAGS) -MMD -MP -c -o $@ $<
+
+# The kernel's drawing and widget code, compiled again for ring 3.
+$(BUILD)/sdk/%.o: kernel/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(APP_CFLAGS) -MMD -MP -c -o $@ $<
+
+# One app: its C files + the SDK, linked by sdk/app.ld; the flat binary
+# starts with the .lkx header. One rule per folder in apps/.
+define APP_RULE
+$(patsubst $(1)/%.c,$(BUILD)/$(1)/%.o,$(wildcard $(1)/*.c)): $(BUILD)/$(1)/%.o: $(1)/%.c
+	@mkdir -p $$(dir $$@)
+	$(CC) $(APP_CFLAGS) -MMD -MP -c -o $$@ $$<
+
+$(BUILD)/$(1)/$(notdir $(1)).lkx: $(patsubst $(1)/%.c,$(BUILD)/$(1)/%.o,$(wildcard $(1)/*.c)) $(SDK_OBJS) sdk/app.ld
+	$(LD) -m elf_i386 --no-warn-rwx-segments -T sdk/app.ld -o $$(basename $$@).elf $$(filter %.o,$$^) $(LIBGCC)
+	$(OBJCOPY) -O binary $$(basename $$@).elf $$@
+endef
+$(foreach p,$(APP_PATHS),$(eval $(call APP_RULE,$(p))))
+
+$(BUILD)/gen/ramdisk.bin: $(APP_LKX) $(foreach p,$(APP_PATHS),$(p)/kerns.json) tools/mkramdisk.py
+	@mkdir -p $(dir $@)
+	python3 tools/mkramdisk.py $@ $(RAMDISK_ARGS)
 $(BUILD)/kernel/bios_thunk_blob.asm.o: $(BUILD)/bios_thunk.bin
 
 # The real-mode BIOS disk thunk: a flat binary the kernel carries and copies

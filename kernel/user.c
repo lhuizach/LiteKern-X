@@ -3,14 +3,18 @@
 #include "kernel/pmm.h"
 #include "kernel/printk.h"
 #include "kernel/string.h"
+#include "kernel/timing.h"
 #include "kernel/vmm.h"
+
+#define WATCHDOG_MS 10000   /* an app that makes no call for this long is stopped */
 
 /* kernel/usermode.asm */
 int user_run(uint32_t entry, uint32_t user_esp);
 void user_return(int code) __attribute__((noreturn));
 
-static int running, killed;
+static int running, killed, hung;
 static uint32_t kill_vector;
+static uint32_t last_call_ms;
 
 int user_check(uint32_t ptr, uint32_t len, int write)
 {
@@ -40,15 +44,24 @@ static int map_fresh_page(uint32_t virt)
 
 int user_exec(const void *image, uint32_t size, struct user_result *res)
 {
+    return user_exec_app(image, size, 0, USER_BASE, res);
+}
+
+int user_exec_app(const void *image, uint32_t size, uint32_t bss, uint32_t entry,
+                  struct user_result *res)
+{
     if (running)
         panic("user_exec: a user program is already running");
-    if (!size || size > USER_IMAGE_MAX)
+    if (!size || size > USER_IMAGE_MAX || bss > USER_IMAGE_MAX ||
+        entry < USER_BASE || entry >= USER_BASE + size)
         return -EINVAL;
 
+    /* The image, then its zero-filled data (frames come zeroed). */
     int err = 0;
-    for (uint32_t off = 0; off < size && !err; off += PAGE_SIZE) {
+    uint32_t total = size + bss;
+    for (uint32_t off = 0; off < total && !err; off += PAGE_SIZE) {
         err = map_fresh_page(USER_BASE + off);
-        if (!err) {
+        if (!err && off < size) {
             uint32_t n = size - off < PAGE_SIZE ? size - off : PAGE_SIZE;
             /* The kernel reaches the frame through its identity map. */
             memcpy((void *)(vmm_lookup(USER_BASE + off) & ~0xfffu),
@@ -63,15 +76,50 @@ int user_exec(const void *image, uint32_t size, struct user_result *res)
     }
 
     running = 1;
-    killed = 0;
-    int code = user_run(USER_BASE, USER_STACK_TOP);
+    killed = hung = 0;
+    last_call_ms = uptime_ms();
+    int code = user_run(entry, USER_STACK_TOP);
     running = 0;
 
     res->killed = killed;
+    res->hung = hung;
     res->vector = killed ? kill_vector : 0;
     res->exit_code = killed ? 0 : code;
     vmm_user_teardown();
     return 0;
+}
+
+int user_map(uint32_t virt, uint32_t bytes)
+{
+    if (!running || virt < USER_BASE || virt >= USER_TOP || bytes > USER_TOP - virt)
+        return -EINVAL;
+    for (uint32_t off = 0; off < bytes; off += PAGE_SIZE) {
+        if (vmm_lookup(virt + off) & PTE_PRESENT)
+            continue;                       /* already there */
+        int err = map_fresh_page(virt + off);
+        if (err)
+            return err;
+    }
+    return 0;
+}
+
+void user_alive(void)
+{
+    last_call_ms = uptime_ms();
+}
+
+void user_watchdog(const struct int_frame *f)
+{
+    if (!running || uptime_ms() - last_call_ms < WATCHDOG_MS)
+        return;
+    kprintf("user: no response for %u s at eip=0x%08x; stopped\n", WATCHDOG_MS / 1000, f->eip);
+    hung = 1;
+    user_kill(f);
+}
+
+int user_running(void)
+{
+    return running;
 }
 
 void user_kill(const struct int_frame *f)

@@ -2,6 +2,7 @@
 #include "kernel/errno.h"
 #include "kernel/printk.h"
 #include "kernel/timing.h"
+#include "kernel/sys_app.h"
 #include "kernel/user.h"
 
 static int sys_debug_write(uint32_t buf, uint32_t len)
@@ -19,6 +20,7 @@ static int sys_debug_write(uint32_t buf, uint32_t len)
 void syscall_dispatch(struct int_frame *f)
 {
     int ret;
+    user_alive();                   /* the watchdog: this app is still responding */
     switch (f->eax) {
     case SYS_EXIT:
         user_exit((int)f->ebx);
@@ -29,7 +31,7 @@ void syscall_dispatch(struct int_frame *f)
         ret = (int)uptime_ms();
         break;
     default:
-        ret = -ENOSYS;
+        ret = sys_app(f->eax, f->ebx, f->ecx, f->edx, f->esi, f->edi);
         break;
     }
     f->eax = (uint32_t)ret;
