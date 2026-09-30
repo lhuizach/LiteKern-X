@@ -83,16 +83,18 @@ void selftest_wm_run(void)
     struct gfx_surface *s = screen_surface();
     struct wm_event ev;
     int cx = s->w - t->spacing - t->button_size / 2;       /* close button centre */
-    int cy = t->headerbar_h / 2;
+    int top = t->topbar_h;                                /* the window starts under the top bar */
+    int cy = top + t->headerbar_h / 2;
+    int ct = top + t->headerbar_h;                        /* first content row on screen */
 
     wm_open("Files");
     check(wm_is_open(), "a window opens");
-    check(px(s->w / 2 - 100, 4) == t->headerbar_bg && px(10, t->headerbar_h - 1) == t->headerbar_border,
+    check(px(s->w / 2 - 100, top + 4) == t->headerbar_bg && px(10, ct - 1) == t->headerbar_border,
           "header bar and its bottom border use the theme");
-    check(px(20, t->headerbar_h + 20) == t->window_bg, "content starts as the window background");
+    check(px(20, ct + 20) == t->window_bg, "content starts as the window background");
     int white = 0;
     for (int x = s->w / 2 - 40; x < s->w / 2 + 40; x++)
-        for (int y = 10; y < 36; y++)
+        for (int y = top + 10; y < top + 36; y++)
             white += px(x, y) == t->fg;
     check(white > 20, "the title is drawn in the middle of the header bar");
     check(px(cx, cy - 10) == t->button_bg, "close button: a round button at the right");
@@ -123,7 +125,7 @@ void selftest_wm_run(void)
 
     wm_input_mouse(100, 200, MOUSE_LEFT);
     wm_input_mouse(100, 200, 0);
-    check(next(&ev) && ev.type == WM_EVENT_CLICK && ev.x == 100 && ev.y == 200 - t->headerbar_h,
+    check(next(&ev) && ev.type == WM_EVENT_CLICK && ev.x == 100 && ev.y == 200 - ct,
           "a content click arrives in content coordinates");
 
     drain();
@@ -131,7 +133,7 @@ void selftest_wm_run(void)
     wm_input_mouse(310, 210, 0);
     wm_input_mouse(320, 220, 0);
     check(wm_poll_event(&ev) && ev.type == WM_EVENT_POINTER && ev.x == 320 &&
-              ev.y == 220 - t->headerbar_h && !ev.changed && !wm_poll_event(&ev),
+              ev.y == 220 - ct && !ev.changed && !wm_poll_event(&ev),
           "pointer moves reach the app, merged into the latest position");
     wm_input_mouse(320, 220, MOUSE_LEFT);
     wm_input_mouse(330, 220, MOUSE_LEFT);
@@ -159,7 +161,7 @@ void selftest_wm_run(void)
 
     struct gfx_surface *c = wm_content();
     gfx_fill_rect(c, -10, -10, 50, 50, 0xff00ff);
-    check(px(5, t->headerbar_h - 2) == t->headerbar_bg && px(5, t->headerbar_h + 5) == 0xff00ff,
+    check(px(5, ct - 2) == t->headerbar_bg && px(5, ct + 5) == 0xff00ff,
           "drawing into the content can't reach the header bar");
 
     /* Leave the mock-up open, as Files will look, for the screenshot. */

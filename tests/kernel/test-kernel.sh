@@ -113,7 +113,7 @@ selftest_done_re='^selftest: drivers [0-9]+/[0-9]+ passed.?$|^PANIC: .*\).?$'
 user_done_re='^selftest: user [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$'
 panic_re='^PANIC: .*[0-9a-f)].?$'
 
-SCREEN="corner= has=$WHITE@0,0,120,30 has=3584e4@400,78,512,182" boot_until build/litekernx.img "$done_re" 20
+SCREEN="corner= has=$WHITE@0,0,120,30 has=3584e4@422,698,482,758" boot_until build/litekernx.img "$done_re" 20
 check "boots to ready with per-phase timing" \
     '^LiteKern X$' \
     '^\[boot\] tsc=[0-9]+ MHz' \
@@ -153,13 +153,14 @@ check "binds the COM1, display, keyboard and touchpad drivers" \
     '^dev fb0 driver=vbefb bound$' \
     '^dev kbd0 driver=ps2kbd bound$' \
     '^dev mouse0 driver=ps2mouse bound$' \
-    '^drivers: 4 registered, 4 devices bound, 0 failed; [0-9]+ PCI devices without a driver$'
+    '^dev rtc0 driver=cmos-rtc bound$' \
+    '^drivers: 5 registered, 5 devices bound, 0 failed; [0-9]+ PCI devices without a driver$'
 
-check "boots to the desktop (top bar, app grid)" \
+check "boots to the desktop (top bar, dock)" \
     '^console: 128x48 characters, video BIOS font at 0x[0-9a-f]{5}$' \
     "^screen: corner $DESKTOP$" \
     "^screen: has $WHITE in 0,0,120,30: yes$" \
-    '^screen: has 3584e4 in 400,78,512,182: yes$' \
+    '^screen: has 3584e4 in 422,698,482,758: yes$' \
     '^fb0: write-combining on \(MTRR 0xfd000000-0xfd3fffff\)$'
 
 SCREEN="corner= has=ffffff@16,16,200,32 has=e8a33d@376,48,428,88 has=48a6e8@16,110,500,290" \
@@ -224,7 +225,8 @@ check "cursor: the arrow follows the touchpad, nothing left behind" \
     '!cursor: no|PANIC'
 
 # Window system: the self-test leaves a window open; the cursor (starting at
-# the centre, 512,384) is moved onto the close button (1001,23) and clicked.
+# the centre, 512,384) is moved onto the close button (1001,53: below the
+# 30 px top bar) and clicked.
 SCREEN="has=222226@200,400,800,700 corner=" \
     boot_until build/test-wm/litekernx.img '^selftest: wm [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$' 20
 check "window system: header bar, buttons, events (+ Adwaita dark window on screen)" \
@@ -233,7 +235,7 @@ check "window system: header bar, buttons, events (+ Adwaita dark window on scre
     '^screen: corner 222226$' \
     '!selftest: FAIL|PANIC'
 
-KEYS="move:489,-361 press:1 release" KEYS_DONE='^wm: close' SCREEN="corner=" \
+KEYS="move:489,-331 press:1 release" KEYS_DONE='^wm: close' SCREEN="corner=" \
     boot_until build/test-wm/litekernx.img '^mouse: \(512, 384\) buttons ---.?$' 20
 check "window system: clicking the close button closes the window, the desktop comes back" \
     '^wm: close$' \
@@ -251,17 +253,19 @@ check "desktop: logged clicks don't draw the log over it" \
     "^screen: has $TEXT in 0,0,1024,768: no$" \
     '!PANIC'
 
-# Desktop: the app grid is centred under the top bar; with two apps on the
-# 1024-wide screen, Files is the tile at 400-512 and Log at 512-624, from
-# y=78. The pointer starts at 512,384; the close button is at 1001,23.
-KEYS="move:-56,-254 press:1 release move:545,-107 press:1 release" KEYS_DONE='^wm: close' \
-SCREEN="corner= has=3584e4@400,78,512,182" \
+# The shell on the 1024x768 screen. The pointer starts at 512,384.
+#   dock (bottom, centred): Files 422-482, Log 482-542, Show Apps 542-602; y 698-758
+#   top bar: Home 6-46, power 978-1018; y 3-27. Power menu: Restart 844-1012 x 40-74
+#   app menu (two apps, centred above the dock): Files 400-512, Log 512-624; y 311-415
+#   a window's close button: 1001,53
+KEYS="move:-60,344 press:1 release move:549,-675 press:1 release" KEYS_DONE='^wm: close' \
+SCREEN="corner= has=3584e4@422,698,482,758" \
     boot_until build/litekernx.img "$done_re" 20
-check "desktop: clicking Files opens it, its close button returns to the desktop" \
+check "desktop: the dock opens Files, its close button returns to the desktop" \
     '^desktop: open Files$' \
     '^wm: close$' \
     "^screen: corner $DESKTOP$" \
-    '^screen: has 3584e4 in 400,78,512,182: yes$' \
+    '^screen: has 3584e4 in 422,698,482,758: yes$' \
     '!PANIC'
 
 boot_until build/test-widgets/litekernx.img '^selftest: widgets [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$' 20
@@ -271,7 +275,7 @@ check "widgets: button, list, entry, dialog (states, input, results)" \
 
 # Files, driven from the keyboard: Ctrl+N creates, F2 renames, Delete
 # deletes, each through its dialog; a duplicate name is refused.
-KEYS="move:-56,-254 press:1 release ctrl-n h i ret f2 backspace backspace b y e ret ctrl-n b y e ret esc delete ret" \
+KEYS="move:-60,344 press:1 release ctrl-n h i ret f2 backspace backspace b y e ret ctrl-n b y e ret esc delete ret" \
 KEYS_DONE='^files: delete bye' SCREEN="corner=" \
     boot_until build/litekernx.img "$done_re" 30
 check "Files: create, rename and delete through the dialogs" \
@@ -282,16 +286,47 @@ check "Files: create, rename and delete through the dialogs" \
     '!files: create bye' \
     '!PANIC'
 
-# The Log app shows the log below its 46 px header bar.
-KEYS="move:56,-254 press:1 release a b c d e f g h i j k l m home" KEYS_DONE="^kbd: key 0x026 'l'" \
-SCREEN="has=$TEXT@0,46,200,62 has=$TEXT@800,46,1024,62 has=$TEXT@0,62,100,78" \
+# The Log app shows the log below the top bar and its header bar (30 + 46 px).
+KEYS="move:0,344 press:1 release a b c d e f g h i j k l m home" KEYS_DONE="^kbd: key 0x026 'l'" \
+SCREEN="has=$TEXT@0,76,200,92 has=$TEXT@800,76,1024,92 has=$TEXT@0,92,100,108" \
     boot_until build/litekernx.img "$done_re" 20
 check "Log app: the log in a window; Home shows its start with the indicator" \
     '^desktop: open Log$' \
-    "^screen: has $TEXT in 0,46,200,62: no$" \
-    "^screen: has $TEXT in 800,46,1024,62: yes$" \
-    "^screen: has $TEXT in 0,62,100,78: yes$" \
+    "^screen: has $TEXT in 0,76,200,92: no$" \
+    "^screen: has $TEXT in 800,76,1024,92: yes$" \
+    "^screen: has $TEXT in 0,92,100,108: yes$" \
     '!kbd: key 0x147'
+
+KEYS="move:60,344 press:1 release move:-4,-365 press:1 release" KEYS_DONE='^desktop: open Log' \
+    boot_until build/litekernx.img "$done_re" 20
+check "shell: Show Apps opens the app menu; clicking an app there opens it" \
+    '^desktop: app menu open$' \
+    '^desktop: open Log$' \
+    '!PANIC'
+
+KEYS="move:-60,344 press:1 release move:-426,-713 press:1 release" KEYS_DONE='^desktop: close Files' \
+SCREEN="corner=" boot_until build/litekernx.img "$done_re" 20
+check "shell: Home closes the open app" \
+    '^desktop: open Files$' \
+    '^desktop: close Files$' \
+    "^screen: corner $DESKTOP$" \
+    '!PANIC'
+
+KEYS="move:486,-369 press:1 release move:-68,42 press:1 release" KEYS_DONE='^power: restarting' \
+    boot_until build/litekernx.img "$done_re" 20
+check "shell: the power menu restarts the machine" \
+    '^shell: restart$' \
+    '^power: restarting$' \
+    '!PANIC'
+
+# The clock, from the RTC: QEMU's clock starts just before the new year, so
+# the first minute change rolls the day, month, year and weekday over.
+boot_until build/litekernx.img '^shell: clock Fri 1 Jan  00:00.?$|^PANIC: .*[0-9a-f)].?$' 20 \
+    -rtc base=2026-12-31T23:59:57
+check "shell: the clock shows the RTC's date and time, and follows it" \
+    '^shell: clock Thu 31 Dec  23:59$' \
+    '^shell: clock Fri 1 Jan  00:00$' \
+    '!PANIC'
 
 boot_until build/test-drivers/litekernx.img "$selftest_done_re" 20
 check "driver layer + display driver self-test" \

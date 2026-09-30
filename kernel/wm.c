@@ -27,6 +27,18 @@ static int qhead, qtail;
 static int hover = -2, pressed = -2;                /* button index; -2 = none */
 static uint8_t last_buttons;
 
+/* The window starts under the shell's top bar (kernel/desktop.h). */
+static int win_top(void)
+{
+    return theme_get()->topbar_h;
+}
+
+/* The first row of the content area, on the screen. */
+static int content_top(void)
+{
+    return win_top() + theme_get()->headerbar_h;
+}
+
 static void copy(char *dst, const char *src, int max)
 {
     int i = 0;
@@ -58,7 +70,7 @@ static void layout(void)
 {
     const struct theme *t = theme_get();
     struct gfx_surface *s = screen_surface();
-    int top = (t->headerbar_h - t->button_size) / 2;
+    int top = win_top() + (t->headerbar_h - t->button_size) / 2;
     int left = t->spacing, right = s->w - t->spacing;
 
     /* The close button: a 24 px circle in a button-size box, far right. */
@@ -139,15 +151,16 @@ static void draw_header(void)
 {
     const struct theme *t = theme_get();
     struct gfx_surface *s = screen_surface();
-    gfx_fill_rect(s, 0, 0, s->w, t->headerbar_h - 1, t->headerbar_bg);
-    gfx_fill_rect(s, 0, t->headerbar_h - 1, s->w, 1, t->headerbar_border);
+    int y = win_top();
+    gfx_fill_rect(s, 0, y, s->w, t->headerbar_h - 1, t->headerbar_bg);
+    gfx_fill_rect(s, 0, y + t->headerbar_h - 1, s->w, 1, t->headerbar_border);
     for (int i = 0; i <= nbuttons; i++)
         draw_button(s, i);
     int tw = gfx_text_width(title);
-    gfx_text(s, (s->w - tw) / 2, (t->headerbar_h - FONT_H) / 2, title, t->fg, GFX_TRANSPARENT);
+    gfx_text(s, (s->w - tw) / 2, y + (t->headerbar_h - FONT_H) / 2, title, t->fg, GFX_TRANSPARENT);
     /* Faux bold, as GNOME titles are: draw it again one pixel to the right. */
-    gfx_text(s, (s->w - tw) / 2 + 1, (t->headerbar_h - FONT_H) / 2, title, t->fg, GFX_TRANSPARENT);
-    screen_damage(0, 0, s->w, t->headerbar_h);
+    gfx_text(s, (s->w - tw) / 2 + 1, y + (t->headerbar_h - FONT_H) / 2, title, t->fg, GFX_TRANSPARENT);
+    screen_damage(0, y, s->w, t->headerbar_h);
 }
 
 void wm_open(const char *name)
@@ -161,8 +174,8 @@ void wm_open(const char *name)
     qhead = qtail = 0;
     hover = pressed = -2;
     last_buttons = 0;       /* apps open on a release: nothing is held */
-    content =(struct gfx_surface){ s->px + t->headerbar_h * s->stride, s->w,
-                                    s->h - t->headerbar_h, s->stride };
+    content = (struct gfx_surface){ s->px + content_top() * s->stride, s->w,
+                                    s->h - content_top(), s->stride };
     gfx_fill_rect(&content, 0, 0, content.w, content.h, t->window_bg);
     layout();
     draw_header();
@@ -227,7 +240,7 @@ struct gfx_surface *wm_content(void)
 
 void wm_damage(int x, int y, int w, int h)
 {
-    screen_damage(x, y + theme_get()->headerbar_h, w, h);
+    screen_damage(x, y + content_top(), w, h);
 }
 
 void wm_present(void)
@@ -272,7 +285,6 @@ void wm_input_mouse(int x, int y, uint8_t mouse_buttons)
 {
     if (!open)
         return;
-    const struct theme *t = theme_get();
     int down = (mouse_buttons & MOUSE_LEFT) && !(last_buttons & MOUSE_LEFT);
     int up = !(mouse_buttons & MOUSE_LEFT) && (last_buttons & MOUSE_LEFT);
     uint8_t changed = mouse_buttons ^ last_buttons;
@@ -281,7 +293,7 @@ void wm_input_mouse(int x, int y, uint8_t mouse_buttons)
     /* Every update reaches the app (for hover, press and drag), except a
      * press that belongs to a header button. */
     if (!(down && button_at(x, y) >= 0) && !(up && pressed != -2))
-        push((struct wm_event){ .type = WM_EVENT_POINTER, .x = x, .y = y - t->headerbar_h,
+        push((struct wm_event){ .type = WM_EVENT_POINTER, .x = x, .y = y - content_top(),
                                 .buttons = mouse_buttons, .changed = changed });
 
     int over = button_at(x, y);
@@ -305,8 +317,8 @@ void wm_input_mouse(int x, int y, uint8_t mouse_buttons)
             else
                 push((struct wm_event){ .type = WM_EVENT_HEADER, .id = buttons[was].id });
         }
-    } else if (down && y >= t->headerbar_h) {
-        push((struct wm_event){ .type = WM_EVENT_CLICK, .x = x, .y = y - t->headerbar_h,
+    } else if (down && y >= content_top()) {
+        push((struct wm_event){ .type = WM_EVENT_CLICK, .x = x, .y = y - content_top(),
                                 .buttons = mouse_buttons });
     }
     screen_present();

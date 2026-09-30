@@ -109,12 +109,13 @@ static void __attribute__((noreturn)) idle(const struct boot_info *bi)
      * desktop takes over. The gfx self-test's pattern is left on screen for
      * its screenshot instead. */
 #ifndef LKX_SELFTEST_GFX
-    desktop_show();
+    desktop_start();
 #endif
 
     for (;;) {
         struct key_event keys[8];
         struct mouse_event moves[16];
+        desktop_tick();         /* the clock: rtc0's IRQ 8 wakes the hlt once a second */
         /* Check for events with interrupts off, so one arriving between the
          * check and the hlt can't be missed: `sti; hlt` is atomic. */
         __asm__ volatile("cli");
@@ -127,6 +128,8 @@ static void __attribute__((noreturn)) idle(const struct boot_info *bi)
         __asm__ volatile("sti");
 
         for (int i = 0; i < nk / (int)sizeof(keys[0]); i++) {
+            if (desktop_input_key(&keys[i]))
+                continue;
             if (wm_is_open())
                 wm_input_key(&keys[i]);
             else
@@ -138,10 +141,10 @@ static void __attribute__((noreturn)) idle(const struct boot_info *bi)
             y += moves[i].dy;
             x = x < 0 ? 0 : x >= w ? w - 1 : x;
             y = y < 0 ? 0 : y >= h ? h - 1 : y;
-            if (wm_is_open())                   /* per packet: no click is lost */
+            /* Per packet, so no click is lost: the shell first (top bar,
+             * menu, desktop), then the open window. */
+            if (!desktop_input_mouse(x, y, moves[i].buttons) && wm_is_open())
                 wm_input_mouse(x, y, moves[i].buttons);
-            else
-                desktop_input_mouse(x, y, moves[i].buttons);
             moved |= moves[i].dx || moves[i].dy;
             if (moves[i].buttons != buttons) {      /* clicks are always logged */
                 buttons = moves[i].buttons;

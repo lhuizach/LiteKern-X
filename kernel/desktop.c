@@ -1,139 +1,593 @@
+/* LiteKern X — the shell: top bar, desktop (app grid + dock), launching apps.
+ *
+ * The desktop is just the background and a dock (Fedora-style): the apps,
+ * then "Show Apps", which opens the app menu, a full-screen grid of apps.
+ *
+ * Everything clickable is a "target" with a rectangle: the top bar's Home
+ * and power buttons (always), the power menu's items (while it's open),
+ * the dock's items (on the desktop) and the app menu's tiles (while it's
+ * open). One piece of pointer
+ * logic handles them all: hover highlights, and a press released over the
+ * same target activates it. */
 #include "kernel/desktop.h"
 #include "kernel/apps.h"
 #include "kernel/console.h"
+#include "kernel/driver.h"
 #include "kernel/font.h"
 #include "kernel/icon.h"
 #include "kernel/input.h"
+#include "kernel/power.h"
 #include "kernel/printk.h"
+#include "kernel/rtc.h"
 #include "kernel/screen.h"
 #include "kernel/theme.h"
 #include "kernel/wm.h"
 
 #define GRID_TOP 48         /* gap between the top bar and the grid */
 #define TILE_RADIUS 12
+#define BAR_BUTTON_W 40     /* top bar buttons */
+#define BAR_BUTTON_H 24
+#define DOCK_ICON 48
+#define DOCK_CELL 60
+#define DOCK_PAD 8
+#define DOCK_GAP 8          /* from the bottom of the screen */
+#define MENU_W 180
+#define MENU_ITEM_H 34
+#define MENU_PAD 6
+#define WHITE 0xffffff
+
+enum target_kind { T_HOME, T_POWER, T_RESTART, T_SHUTDOWN, T_TILE, T_DOCK, T_APPS };
+
+struct target {
+    enum target_kind kind;
+    int app;                /* T_TILE / T_DOCK: index into builtin_apps */
+    struct gfx_rect r;
+};
+
+#define MAX_TARGETS (4 + 2 * 16)
+static struct target targets[MAX_TARGETS];
+static int ntargets;
+static int hover = -1, pressed = -1;        /* target index; -1 = none */
+static uint8_t last_buttons;
 
 static const struct app *running;           /* the app in the open window, if any */
-static int hover = -1, pressed = -1;        /* tile index; -1 = none */
-static uint8_t last_buttons;
-static int shown;           /* desktop_show() ran: until then, ignore the pointer */
+static int started;         /* desktop_start() ran: until then, ignore the pointer */
+static int menu_open;
+static int grid_open;       /* the app menu */
+static uint32_t menu_under[(MENU_W + 8) * (2 * MENU_ITEM_H + 2 * MENU_PAD + 8)];
+static struct gfx_rect menu_r;
+static struct rtc_time clock_shown;
+static uint32_t last_tick = ~0u;
+static device_t *rtc;
 
-/* Tiles fill rows left to right, each row centred. */
-static struct gfx_rect tile(int i)
+static const struct theme *T(void)
 {
-    const struct theme *t = theme_get();
-    struct gfx_surface *s = screen_surface();
-    int cols = (s->w - 2 * t->margin) / t->tile_w;
+    return theme_get();
+}
+
+static struct gfx_surface *S(void)
+{
+    return screen_surface();
+}
+
+static int desktop_visible(void)
+{
+    return started && !wm_is_open();
+}
+
+/* The background below the top bar: dimmed while the app menu is open,
+ * like GNOME's overview. */
+static uint32_t area_bg(void)
+{
+    return grid_open ? gfx_mix(0, T()->desktop_bg, 90) : T()->desktop_bg;
+}
+
+static uint32_t dock_bg(void)
+{
+    return gfx_mix(WHITE, area_bg(), 20);
+}
+
+/* --- layout -------------------------------------------------------------------- */
+
+static struct gfx_rect tile_rect(int i)
+{
+    const struct theme *t = T();
+    int cols = (S()->w - 2 * t->margin) / t->tile_w;
     if (cols < 1)
         cols = 1;
     int row = i / cols, in_row = builtin_app_count - row * cols;
     if (in_row > cols)
         in_row = cols;
-    int x0 = (s->w - in_row * t->tile_w) / 2;
-    return (struct gfx_rect){ x0 + (i % cols) * t->tile_w, t->topbar_h + GRID_TOP + row * t->tile_h,
-                              t->tile_w, t->tile_h };
+    int x0 = (S()->w - in_row * t->tile_w) / 2;
+    int rows = (builtin_app_count + cols - 1) / cols;
+    int space = S()->h - t->topbar_h - (DOCK_ICON + 2 * DOCK_PAD + DOCK_GAP);
+    int y0 = t->topbar_h + (space - rows * t->tile_h) / 2;
+    if (y0 < t->topbar_h + GRID_TOP)
+        y0 = t->topbar_h + GRID_TOP;
+    return (struct gfx_rect){ x0 + (i % cols) * t->tile_w, y0 + row * t->tile_h, t->tile_w,
+                              t->tile_h };
 }
 
-static int tile_at(int x, int y)
+static struct gfx_rect dock_rect(void)
 {
-    for (int i = 0; i < builtin_app_count; i++) {
-        struct gfx_rect r = tile(i);
-        if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
-            return i;
-    }
-    return -1;
+    int w = (builtin_app_count + 1) * DOCK_CELL + 2 * DOCK_PAD, h = DOCK_ICON + 2 * DOCK_PAD;
+    return (struct gfx_rect){ (S()->w - w) / 2, S()->h - DOCK_GAP - h, w, h };
 }
 
-static void draw_tile(int i)
+static struct gfx_rect dock_item_rect(int i)
 {
-    const struct theme *t = theme_get();
-    struct gfx_surface *s = screen_surface();
-    const struct app *a = &builtin_apps[i];
-    struct gfx_rect r = tile(i);
+    struct gfx_rect d = dock_rect();
+    return (struct gfx_rect){ d.x + DOCK_PAD + i * DOCK_CELL, d.y + 2, DOCK_CELL, d.h - 4 };
+}
 
-    gfx_fill_rect(s, r.x, r.y, r.w, r.h, t->desktop_bg);
-    if (pressed == i || hover == i)
-        gfx_fill_round_rect(s, r.x + 4, r.y, r.w - 8, r.h, TILE_RADIUS,
-                            pressed == i ? t->tile_active : t->tile_hover);
-    const struct icon *ic = icon_find(a->icon);
-    int ix = r.x + (r.w - 48) / 2, iy = r.y + 14;
-    if (ic) {
-        gfx_blit_alpha(s, ix, iy, ic->px, ic->w, ic->h, ic->w);
-    } else {                    /* no icon built in: its initial on an accent tile */
-        char initial[2] = { a->name[0], '\0' };
-        gfx_fill_round_rect(s, ix, iy, 48, 48, 10, t->accent_bg);
-        gfx_text(s, ix + 20, iy + 16, initial, t->accent_fg, GFX_TRANSPARENT);
+static void add_target(enum target_kind kind, int app, struct gfx_rect r)
+{
+    if (ntargets < MAX_TARGETS)
+        targets[ntargets++] = (struct target){ kind, app, r };
+}
+
+/* Which targets exist right now. */
+static void build_targets(void)
+{
+    const struct theme *t = T();
+    int y = (t->topbar_h - BAR_BUTTON_H) / 2;
+    ntargets = 0;
+    add_target(T_HOME, 0, (struct gfx_rect){ t->spacing, y, BAR_BUTTON_W, BAR_BUTTON_H });
+    add_target(T_POWER, 0, (struct gfx_rect){ S()->w - t->spacing - BAR_BUTTON_W, y, BAR_BUTTON_W,
+                                              BAR_BUTTON_H });
+    if (menu_open) {
+        int iy = menu_r.y + MENU_PAD;
+        add_target(T_RESTART, 0, (struct gfx_rect){ menu_r.x + MENU_PAD, iy, MENU_W - 2 * MENU_PAD,
+                                                    MENU_ITEM_H });
+        add_target(T_SHUTDOWN, 0, (struct gfx_rect){ menu_r.x + MENU_PAD, iy + MENU_ITEM_H,
+                                                     MENU_W - 2 * MENU_PAD, MENU_ITEM_H });
     }
-    gfx_text(s, r.x + (r.w - gfx_text_width(a->name)) / 2, iy + 48 + 12, a->name, t->fg,
-             GFX_TRANSPARENT);
-    screen_damage(r.x, r.y, r.w, r.h);
+    if (desktop_visible()) {
+        int n = builtin_app_count < 16 ? builtin_app_count : 16;
+        for (int i = 0; i < n; i++)
+            add_target(T_DOCK, i, dock_item_rect(i));
+        add_target(T_APPS, 0, dock_item_rect(n));
+        if (grid_open)
+            for (int i = 0; i < n; i++)
+                add_target(T_TILE, i, tile_rect(i));
+    }
+    hover = pressed = -1;
+}
+
+/* --- drawing ------------------------------------------------------------------- */
+
+static void draw_home_icon(struct gfx_surface *s, int cx, int cy, uint32_t c)
+{
+    for (int i = 0; i <= 7; i++)                    /* roof */
+        gfx_fill_rect(s, cx - i, cy - 7 + i, 2 * i + 1, 1, c);
+    gfx_fill_rect(s, cx - 5, cy + 1, 11, 6, c);      /* walls */
+    gfx_fill_rect(s, cx - 1, cy + 3, 3, 4, T()->topbar_bg);   /* door */
+}
+
+static void draw_power_icon(struct gfx_surface *s, int cx, int cy, uint32_t c, uint32_t bg)
+{
+    gfx_fill_circle(s, cx, cy + 1, 7, c);
+    gfx_fill_circle(s, cx, cy + 1, 5, bg);
+    gfx_fill_rect(s, cx - 3, cy - 7, 7, 5, bg);      /* the gap at the top */
+    gfx_fill_rect(s, cx - 1, cy - 8, 2, 8, c);       /* the stroke */
+}
+
+static uint32_t target_bg(int i, uint32_t base)
+{
+    if (i == pressed)
+        return gfx_mix(WHITE, base, 64);
+    if (i == hover)
+        return gfx_mix(WHITE, base, 38);
+    return base;
+}
+
+static void draw_target(int i);
+
+/* "Wed 30 Sep  14:05", GNOME's format (24-hour); empty without a clock. */
+static void clock_text(char text[24])
+{
+    static const char *const days[] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+    static const char *const months[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+    struct rtc_time c = clock_shown;
+    int n = 0;
+    if (!rtc || !c.month) {
+        text[0] = '\0';
+    } else {
+        for (const char *p = days[c.weekday % 7]; *p; p++)
+            text[n++] = *p;
+        text[n++] = ' ';
+        if (c.day >= 10)
+            text[n++] = (char)('0' + c.day / 10);
+        text[n++] = (char)('0' + c.day % 10);
+        text[n++] = ' ';
+        for (const char *p = months[(c.month - 1) % 12]; *p; p++)
+            text[n++] = *p;
+        text[n++] = ' ';
+        text[n++] = ' ';
+        text[n++] = (char)('0' + c.hour / 10);
+        text[n++] = (char)('0' + c.hour % 10);
+        text[n++] = ':';
+        text[n++] = (char)('0' + c.minute / 10);
+        text[n++] = (char)('0' + c.minute % 10);
+        text[n] = '\0';
+    }
+}
+
+static void log_clock(void)
+{
+    char text[24];
+    clock_text(text);
+    kprintf("shell: clock %s\n", text);
+}
+
+static void draw_clock(void)
+{
+    const struct theme *t = T();
+    char text[24];
+    clock_text(text);
+    int w = 24 * FONT_W, x = (S()->w - w) / 2, y = (t->topbar_h - FONT_H) / 2;
+    gfx_fill_rect(S(), x, 0, w, t->topbar_h, t->topbar_bg);
+    int tw = gfx_text_width(text);
+    gfx_text(S(), (S()->w - tw) / 2, y, text, t->fg, GFX_TRANSPARENT);
+    gfx_text(S(), (S()->w - tw) / 2 + 1, y, text, t->fg, GFX_TRANSPARENT);
+    screen_damage(x, 0, w, t->topbar_h);
 }
 
 static void draw_topbar(void)
 {
-    const struct theme *t = theme_get();
-    struct gfx_surface *s = screen_surface();
-    int y = (t->topbar_h - FONT_H) / 2;
-    gfx_fill_rect(s, 0, 0, s->w, t->topbar_h, t->topbar_bg);
-    gfx_text(s, t->margin, y, "LiteKern X", t->fg, GFX_TRANSPARENT);
-    gfx_text(s, t->margin + 1, y, "LiteKern X", t->fg, GFX_TRANSPARENT);    /* faux bold */
+    const struct theme *t = T();
+    gfx_fill_rect(S(), 0, 0, S()->w, t->topbar_h, t->topbar_bg);
+    if (running) {              /* the open app's name, after Home */
+        int x = t->spacing + BAR_BUTTON_W + t->spacing * 2, y = (t->topbar_h - FONT_H) / 2;
+        gfx_text(S(), x, y, running->name, t->fg, GFX_TRANSPARENT);
+        gfx_text(S(), x + 1, y, running->name, t->fg, GFX_TRANSPARENT);
+    }
+    for (int i = 0; i < ntargets; i++)
+        if (targets[i].kind == T_HOME || targets[i].kind == T_POWER)
+            draw_target(i);
+    draw_clock();
+    screen_damage(0, 0, S()->w, t->topbar_h);
+}
+
+static void draw_menu(void)
+{
+    const struct theme *t = T();
+    gfx_fill_round_rect(S(), menu_r.x, menu_r.y, menu_r.w, menu_r.h, 12, t->dialog_bg);
+    for (int i = 0; i < ntargets; i++)
+        if (targets[i].kind == T_RESTART || targets[i].kind == T_SHUTDOWN)
+            draw_target(i);
+    screen_damage(menu_r.x, menu_r.y, menu_r.w, menu_r.h);
+}
+
+static void draw_dock(void)
+{
+    struct gfx_rect d = dock_rect();
+    gfx_fill_rect(S(), d.x, d.y, d.w, d.h, area_bg());
+    gfx_fill_round_rect(S(), d.x, d.y, d.w, d.h, 18, dock_bg());
+    for (int i = 0; i < ntargets; i++)
+        if (targets[i].kind == T_DOCK || targets[i].kind == T_APPS)
+            draw_target(i);
+    screen_damage(d.x, d.y, d.w, d.h);
+}
+
+/* The app's name in a small label above its dock item, while hovered. */
+static void draw_dock_label(void)
+{
+    const struct theme *t = T();
+    struct gfx_rect d = dock_rect();
+    int band_y = d.y - 8 - FONT_H - 12;
+    gfx_fill_rect(S(), 0, band_y, S()->w, FONT_H + 12, area_bg());
+    if (hover >= 0 && (targets[hover].kind == T_DOCK || targets[hover].kind == T_APPS)) {
+        const char *name = targets[hover].kind == T_APPS ? "Show Apps"
+                                                         : builtin_apps[targets[hover].app].name;
+        struct gfx_rect r = targets[hover].r;
+        int w = gfx_text_width(name) + 20, x = r.x + (r.w - w) / 2;
+        gfx_fill_round_rect(S(), x, band_y, w, FONT_H + 12, 8, t->dialog_bg);
+        gfx_text(S(), x + 10, band_y + 6, name, t->fg, GFX_TRANSPARENT);
+    }
+    screen_damage(0, band_y, S()->w, FONT_H + 12);
+}
+
+static void draw_icon(const struct app *a, int x, int y)
+{
+    const struct theme *t = T();
+    const struct icon *ic = icon_find(a->icon);
+    if (ic) {
+        gfx_blit_alpha(S(), x, y, ic->px, ic->w, ic->h, ic->w);
+    } else {                    /* no icon built in: its initial on an accent tile */
+        char initial[2] = { a->name[0], '\0' };
+        gfx_fill_round_rect(S(), x, y, 48, 48, 10, t->accent_bg);
+        gfx_text(S(), x + 20, y + 16, initial, t->accent_fg, GFX_TRANSPARENT);
+    }
+}
+
+static void draw_target(int i)
+{
+    const struct theme *t = T();
+    struct target *g = &targets[i];
+    struct gfx_rect r = g->r;
+    switch (g->kind) {
+    case T_HOME:
+    case T_POWER: {
+        uint32_t bg = target_bg(i, t->topbar_bg);
+        gfx_fill_rect(S(), r.x, r.y, r.w, r.h, t->topbar_bg);
+        gfx_fill_round_rect(S(), r.x, r.y, r.w, r.h, r.h / 2, bg);
+        if (g->kind == T_HOME)
+            draw_home_icon(S(), r.x + r.w / 2, r.y + r.h / 2, t->fg);
+        else
+            draw_power_icon(S(), r.x + r.w / 2, r.y + r.h / 2, t->fg, bg);
+        break;
+    }
+    case T_RESTART:
+    case T_SHUTDOWN: {
+        int disabled = g->kind == T_SHUTDOWN;       /* needs ACPI (Phase 5) */
+        uint32_t bg = disabled ? t->dialog_bg : target_bg(i, t->dialog_bg);
+        gfx_fill_rect(S(), r.x, r.y, r.w, r.h, t->dialog_bg);
+        gfx_fill_round_rect(S(), r.x, r.y, r.w, r.h, 6, bg);
+        gfx_text(S(), r.x + 12, r.y + (r.h - FONT_H) / 2, disabled ? "Shut Down" : "Restart",
+                 disabled ? gfx_mix(t->fg, t->dialog_bg, 110) : t->fg, GFX_TRANSPARENT);
+        break;
+    }
+    case T_TILE: {
+        const struct app *a = &builtin_apps[g->app];
+        gfx_fill_rect(S(), r.x, r.y, r.w, r.h, area_bg());
+        if (i == pressed || i == hover)
+            gfx_fill_round_rect(S(), r.x + 4, r.y, r.w - 8, r.h, TILE_RADIUS,
+                                target_bg(i, area_bg()));
+        int ix = r.x + (r.w - 48) / 2, iy = r.y + 14;
+        draw_icon(a, ix, iy);
+        gfx_text(S(), r.x + (r.w - gfx_text_width(a->name)) / 2, iy + 48 + 12, a->name, t->fg,
+                 GFX_TRANSPARENT);
+        break;
+    }
+    case T_DOCK:
+    case T_APPS: {
+        uint32_t base = dock_bg();
+        gfx_fill_rect(S(), r.x, r.y, r.w, r.h, base);
+        if (i == pressed || i == hover || (g->kind == T_APPS && grid_open))
+            gfx_fill_round_rect(S(), r.x + 2, r.y, r.w - 4, r.h, 12,
+                                target_bg(i, gfx_mix(WHITE, base, g->kind == T_APPS && grid_open ? 38 : 0)));
+        if (g->kind == T_APPS)          /* nine dots, like GNOME's "Show Apps" */
+            for (int k = 0; k < 9; k++)
+                gfx_fill_circle(S(), r.x + r.w / 2 - 10 + (k % 3) * 10, r.y + r.h / 2 - 10 + (k / 3) * 10,
+                                3, t->fg);
+        else
+            draw_icon(&builtin_apps[g->app], r.x + (r.w - DOCK_ICON) / 2, r.y + (r.h - DOCK_ICON) / 2);
+        break;
+    }
+    }
+    screen_damage(r.x, r.y, r.w, r.h);
+}
+
+/* --- the power menu ------------------------------------------------------------ */
+
+static void menu_set(int open)
+{
+    struct gfx_surface *s = S();
+    if (open == menu_open)
+        return;
+    if (open) {
+        const struct theme *t = T();
+        menu_r = (struct gfx_rect){ s->w - t->spacing - MENU_W, t->topbar_h + 4, MENU_W,
+                                    2 * MENU_ITEM_H + 2 * MENU_PAD };
+        for (int y = 0; y < menu_r.h; y++)          /* keep what it covers */
+            for (int x = 0; x < menu_r.w; x++)
+                menu_under[y * MENU_W + x] = s->px[(menu_r.y + y) * s->stride + menu_r.x + x];
+        menu_open = 1;
+        build_targets();
+        draw_topbar();          /* the targets were rebuilt: drop stale highlights */
+        draw_menu();
+    } else {
+        for (int y = 0; y < menu_r.h; y++)
+            for (int x = 0; x < menu_r.w; x++)
+                s->px[(menu_r.y + y) * s->stride + menu_r.x + x] = menu_under[y * MENU_W + x];
+        screen_damage(menu_r.x, menu_r.y, menu_r.w, menu_r.h);
+        menu_open = 0;
+        build_targets();
+        draw_topbar();
+    }
+}
+
+/* --- apps ---------------------------------------------------------------------- */
+
+static void draw_desktop(void)
+{
+    const struct theme *t = T();
+    gfx_fill_rect(S(), 0, t->topbar_h, S()->w, S()->h - t->topbar_h, area_bg());
+    for (int i = 0; i < ntargets; i++)
+        if (targets[i].kind == T_TILE)
+            draw_target(i);
+    draw_dock();
 }
 
 void desktop_show(void)
 {
     if (!screen_ready() || wm_is_open())
         return;
-    struct gfx_surface *s = screen_surface();
-    hover = pressed = -1;
-    shown = 1;
+    started = 1;
     console_set_visible(0);     /* the log keeps recording, but no longer draws over us */
-    gfx_fill_rect(s, 0, 0, s->w, s->h, theme_get()->desktop_bg);
+    menu_open = 0;
+    grid_open = 0;
+    build_targets();
     draw_topbar();
-    for (int i = 0; i < builtin_app_count; i++)
-        draw_tile(i);
+    draw_desktop();
     screen_damage_all();
     screen_present();
+}
+
+void desktop_start(void)
+{
+    rtc = device_find("rtc0");
+    if (rtc && rtc->state != DEVICE_BOUND)
+        rtc = 0;
+    if (rtc) {
+        dev_read(rtc, &clock_shown, sizeof(clock_shown));
+        log_clock();
+    }
+    if (!screen_ready())
+        return;
+    started = 1;
+    if (wm_is_open()) {         /* a self-test left a window open: just the top bar */
+        build_targets();
+        draw_topbar();
+        screen_present();
+    } else {
+        desktop_show();
+    }
 }
 
 static void launch(const struct app *a)
 {
     kprintf("desktop: open %s\n", a->name);
+    grid_open = 0;
     running = a;
     wm_open(a->name);
+    build_targets();
+    draw_topbar();
+    screen_present();
     if (a->open)
         a->open();
 }
 
-void desktop_input_mouse(int x, int y, uint8_t buttons)
+/* Close the open window (and its app), back to the desktop. */
+static void close_app(void)
 {
-    if (!shown || wm_is_open())
-        return;
+    if (running)
+        kprintf("desktop: close %s\n", running->name);
+    if (running && running->close)
+        running->close();
+    running = 0;
+    wm_close();
+    desktop_show();
+}
+
+/* Open or close the app menu. */
+static void set_grid(int open)
+{
+    grid_open = open;
+    kprintf("desktop: app menu %s\n", open ? "open" : "closed");
+    build_targets();
+    draw_desktop();
+    screen_damage_all();
+}
+
+static void activate(const struct target *g)
+{
+    switch (g->kind) {
+    case T_HOME:
+        if (wm_is_open())
+            close_app();
+        else if (grid_open)
+            set_grid(0);
+        break;
+    case T_APPS:
+        set_grid(!grid_open);
+        break;
+    case T_POWER:
+        menu_set(!menu_open);
+        break;
+    case T_RESTART:
+        kprintf("shell: restart\n");
+        power_restart();
+    case T_SHUTDOWN:
+        break;
+    case T_TILE:
+    case T_DOCK:
+        launch(&builtin_apps[g->app]);
+        break;
+    }
+}
+
+/* --- input --------------------------------------------------------------------- */
+
+static int target_at(int x, int y)
+{
+    for (int i = 0; i < ntargets; i++) {
+        struct gfx_rect r = targets[i].r;
+        if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
+            return i;
+    }
+    return -1;
+}
+
+int desktop_input_mouse(int x, int y, uint8_t buttons)
+{
+    if (!started)
+        return 0;
     int down = (buttons & MOUSE_LEFT) && !(last_buttons & MOUSE_LEFT);
     int up = !(buttons & MOUSE_LEFT) && (last_buttons & MOUSE_LEFT);
     last_buttons = buttons;
+    int over = target_at(x, y), consumed = desktop_visible() || menu_open;
 
-    int over = tile_at(x, y);
     if (over != hover) {
         int old = hover;
         hover = over;
         if (old >= 0)
-            draw_tile(old);
+            draw_target(old);
         if (hover >= 0)
-            draw_tile(hover);
+            draw_target(hover);
+        if (desktop_visible())
+            draw_dock_label();
     }
-    if (down && over >= 0) {
-        pressed = over;
-        draw_tile(pressed);
+    if (down) {
+        if (menu_open && over < 0) {
+            menu_set(0);                /* a click outside closes the menu */
+            consumed = 1;
+        } else if (over >= 0) {
+            pressed = over;
+            draw_target(over);
+            consumed = 1;
+        } else if (y < T()->topbar_h) {
+            consumed = 1;               /* the top bar isn't the app's */
+        } else if (grid_open) {
+            set_grid(0);                /* a click on empty space closes the app menu */
+        }
     } else if (up && pressed >= 0) {
         int was = pressed;
         pressed = -1;
-        draw_tile(was);
-        if (was == over) {      /* released on the same tile: open it */
+        draw_target(was);
+        consumed = 1;
+        if (was == over) {
+            struct target g = targets[was];
+            if (g.kind != T_POWER && menu_open)
+                menu_set(0);
             screen_present();
-            launch(&builtin_apps[was]);
-            last_buttons = 0;
-            return;
+            activate(&g);
         }
     }
+    screen_present();
+    return consumed;
+}
+
+int desktop_input_key(const struct key_event *k)
+{
+    if (!k->pressed || k->key != KEY_ESC)
+        return 0;
+    if (menu_open)
+        menu_set(0);
+    else if (grid_open && desktop_visible())
+        set_grid(0);
+    else
+        return 0;
+    screen_present();
+    return 1;
+}
+
+void desktop_tick(void)
+{
+    uint32_t ticks;
+    if (!started || !rtc || dev_ioctl(rtc, RTC_GET_TICKS, &ticks) < 0 || ticks == last_tick)
+        return;
+    last_tick = ticks;
+    struct rtc_time now;
+    dev_read(rtc, &now, sizeof(now));
+    if (now.minute == clock_shown.minute && now.hour == clock_shown.hour &&
+        now.day == clock_shown.day && clock_shown.month)
+        return;
+    clock_shown = now;
+    log_clock();
+    draw_clock();
     screen_present();
 }
 
@@ -161,11 +615,7 @@ void desktop_handle_events(void)
     while (wm_is_open() && wm_poll_event(&ev)) {
         if (ev.type == WM_EVENT_CLOSE) {
             kprintf("wm: close\n");
-            if (running && running->close)
-                running->close();
-            running = 0;
-            wm_close();
-            desktop_show();
+            close_app();
         } else if (running && running->event) {
             running->event(&ev);
         } else {
