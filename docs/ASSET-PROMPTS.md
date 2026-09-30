@@ -1,4 +1,4 @@
-# LiteKern X — Asset Rules and Prompts (cursors, icons, UI glyphs)
+# LiteKern X — Asset Rules and Prompts (cursors, icons, UI glyphs, wallpapers)
 
 Two kinds of asset, made two ways:
 
@@ -6,6 +6,7 @@ Two kinds of asset, made two ways:
 |---|---|---|
 | **Cursors** (§3) | **PNG images**, 32×32 | A text AI types a pixel grid that `tools/cursor-grid2png.py` converts, or a pixel editor (Piskel, Aseprite, GIMP) |
 | **App icons** (§4) | **PNG images**, 48×48 | An image AI or a pixel editor, in the Adwaita style (§4.2) |
+| **Wallpapers** (§8) | **PNG images**, 1024×600 | An image AI, cropped to size (§8.2) |
 | UI glyphs, logo (§5–§6) | SVG | A text AI that writes SVG code (ChatGPT, Claude, Gemini), using the prompts below |
 
 All of them are turned into bitmaps for the kernel **at build time**, by a script, so the kernel never parses PNG or SVG itself.
@@ -24,6 +25,7 @@ assets/
   icons.json    which icons exist (§4.1)
   icons/ui/     close.svg, minimise.svg, check.svg, ... (16x16)
   logo.svg      optional, 128x128
+  wallpapers/   <name>.png, <name>-light.png   1024x600 (§8)
 ```
 **File names:** lowercase letters, digits and hyphens only (`resize-d1.png`, `text-editor.svg`).
 
@@ -56,6 +58,7 @@ Use **only** these 8 colours, plus transparency:
 | Busy cursor | 32×32 × 4 frames | `assets/cursors/wait-0.png` … `wait-3.png` | Played at 150 ms per frame |
 | App icons | **48×48** | `assets/icons/<app>.png` | RGBA PNG, Adwaita style (§4). |
 | UI glyphs | 16×16 | `assets/icons/ui/<name>.svg` | Title-bar buttons, checkboxes and similar |
+| Wallpapers | **1024×600** | `assets/wallpapers/<name>.png` | RGB PNG, 300 KB or less (hard limit 512 KB), dark behind the app grid (§8). |
 | Logo (optional) | 128×128 | `assets/logo.svg` | For the Phase 4 website, and it can be the boot splash (the boot budget is now ≤ 5 s, see `docs/BOOT-BUDGET.md`). |
 
 ---
@@ -319,3 +322,62 @@ Nothing else: no wordmark, no text, no shadows.
 - [ ] Family check: put every app icon side by side at 48 px and at 16 px. Same base, same radius, same weight.
 
 Cursors have their own checklist in §3.5.
+
+---
+
+## 8. Wallpapers (PNG images, for Phase 3 §5)
+
+The desktop uses a plain colour (`#202634`) until Phase 3 §5, "Customisation", adds wallpapers: a solid colour plus 3–5 images. Make them whenever you like. Wallpapers are the biggest assets by far: a raw 1024×600 image is 2.4 MB. Every byte comes off the USB stick through the BIOS during the ≤ 5 s boot (`docs/BOOT-BUDGET.md`, the `assets` phase), so the rules keep them small.
+
+### 8.1 Rules
+- **Size:** exactly **1024×600** pixels, the EeePC's panel. Like every asset, it's drawn 1:1 and never scaled. Other screens show it centred and fill the extra space with a plain colour taken from its edges (the VMs run at 1024×768, which leaves 84 px above and below), so keep the edges calm.
+- **Format:** PNG, RGB, 8 bits per channel, no transparency. Location: `assets/wallpapers/<name>.png`, with names in lowercase, digits and hyphens.
+- **File size:** aim for **300 KB or less**; the hard limit is 512 KB. Smooth gradients and big flat shapes compress well. Photos, film grain, noise and fine texture don't, and they also look muddy on the 8.9" panel.
+- **Dark style:** the desktop's text is white, so the wallpaper must be dark where things sit on it:
+  - **The top 30 px** is covered by the black top bar, so nothing important goes there.
+  - **The app grid** sits in the **upper-middle** (about x 150–870, y 30–400). Keep that area **dark and calm**, at roughly 25% brightness or less, with no busy detail or strong edges.
+  - **Brighter colour, light and glow** go towards the bottom and the edges.
+- **Look:** GNOME/Fedora default-wallpaper style. That means abstract, minimal, soft gradients and a few large, simple, rounded shapes with gentle depth. There's no text, no logos (except LiteKern X's own), no people or animals, and no brands.
+- **Colours:** built around the desktop's slate `#202634` and GNOME's blues and purples (`#1a5fb4` `#1c71d8` `#3584e4` `#613583` `#9141ac`). One warm accent (orange `#ff7800` or yellow `#f6d32d`) at most.
+- **No banding:** the EeePC's panel shows fewer shades than your monitor. At 100% zoom, check that gradients don't break into visible stripes. If they do, give the gradient a wider colour range or a larger area.
+- **Optional light version:** `<name>-light.png`, the same picture brighter, for Phase 3's light style (like GNOME's day/night pairs). The rules flip: the grid area is light and calm, because the text will be dark.
+- **Rights:** use only images you made or are allowed to share. From Phase 4 on, the wallpapers ship in the public release.
+
+### 8.2 Prompt for an image AI
+Image AIs rarely output exactly 1024×600. Ask for a wide 16:9 image, then crop it to the 1024:600 shape (slightly taller than 16:9) and scale it to 1024×600. In GIMP, use *Image → Canvas Size*, then *Image → Scale Image*. Crop from the **bottom or sides**, so the dark upper-middle stays intact.
+
+```text
+Create a desktop wallpaper for LiteKern X, a small operating system styled like GNOME
+(Fedora), for a 10-inch netbook screen. Wide landscape, 16:9, high resolution.
+
+Style: an abstract, minimal wallpaper in the style of GNOME and Fedora default wallpapers.
+Smooth, soft gradients and a few large, simple, rounded shapes with gentle depth and soft
+lighting. Clean and calm.
+
+Dark theme: the image is dark overall, built on deep slate #202634 with blue (#1a5fb4,
+#3584e4) and purple (#613583) tones. The upper-middle of the image must be especially dark
+and plain, because white icons and labels sit there. Put the brighter colours and any glow
+low in the image or near the edges.
+
+Theme: <one of the ideas below, or your own>.
+
+Do not include: text, letters, logos, watermarks, people, animals, buildings, fine detail,
+film grain, noise, photo textures, hard stripes or busy patterns.
+```
+
+For the light version, reuse the same prompt and theme, but replace the "Dark theme" paragraph with: *"Light theme: the image is light overall, built on soft light grey #f6f5f4 and pale blue (#99c1f1) tones. The upper-middle must be especially light and plain, because dark text sits there."*
+
+| File | Theme idea |
+|---|---|
+| `waves.png` | Layered, gently curving waves of deep blue and purple rising from the bottom, fading into dark slate above. |
+| `dusk.png` | Soft, rounded, low-poly hills at the bottom under a dusk sky that fades from purple near the horizon to dark slate at the top. |
+| `blobs.png` | Three or four large, soft, overlapping rounded shapes in blue and purple, clustered in the lower-right, glowing slightly. |
+| `aurora.png` | A faint blue and green aurora ribbon across the lower half, on a dark slate sky. |
+| `solid` | No file: the plain `#202634` colour, always available as the fallback. |
+
+### 8.3 Checklist
+- [ ] Exactly 1024×600, RGB PNG, 512 KB or less (300 KB or less is better).
+- [ ] At 100% zoom, the upper-middle (x 150–870, y 30–400) is dark and calm, and white text would read on it.
+- [ ] Nothing important in the top 30 px, and the edges are calm.
+- [ ] No text, logos, people, grain or visible banding.
+- [ ] You made it, or you're allowed to share it.
