@@ -84,18 +84,45 @@ void gfx_line(struct gfx_surface *s, int x0, int y0, int x1, int y1, uint32_t co
     }
 }
 
-/* How far row `dy` (0 = the corner's outer edge) of a radius-r corner is
- * inset: the circle x^2 + y^2 = r^2 sampled at pixel centres. */
-static int corner_inset(int r, int dy)
+/* Anti-aliased corners (Phase 3 §1): how much of each pixel of a radius-r
+ * corner is inside the curve, from 4x4 samples, 0..255. Indexed from the
+ * corner's outer edge, so all four corners share it by mirroring. */
+#define AA_MAX_R 64
+static uint8_t cov_tab[AA_MAX_R][AA_MAX_R];
+static int cov_r = -1;
+
+static void cov_build(int r)
 {
-    int y2 = (2 * (r - dy) - 1) * (2 * (r - dy) - 1);   /* (2y)^2, y = r - dy - 0.5 */
-    int x = r;
-    while (x > 0 && (2 * x - 1) * (2 * x - 1) + y2 > 4 * r * r)
-        x--;
-    return r - x;
+    if (r == cov_r)
+        return;
+    for (int py = 0; py < r; py++)
+        for (int px = 0; px < r; px++) {
+            int n = 0;
+            for (int j = 0; j < 4; j++)
+                for (int i = 0; i < 4; i++) {
+                    int dx = 8 * px + 2 * i + 1 - 8 * r, dy = 8 * py + 2 * j + 1 - 8 * r;
+                    n += dx * dx + dy * dy <= 64 * r * r;
+                }
+            cov_tab[py][px] = (uint8_t)(n * 255 / 16);
+        }
+    cov_r = r;
 }
 
-void gfx_fill_round_rect(struct gfx_surface *s, int x, int y, int w, int h, int r, uint32_t colour)
+static void put(struct gfx_surface *s, int x, int y, uint32_t colour, uint32_t alpha)
+{
+    if (!alpha || x < 0 || y < 0 || x >= s->w || y >= s->h)
+        return;
+    uint32_t *p = s->px + y * s->stride + x;
+    *p = alpha >= 255 ? colour : gfx_mix(colour, *p, alpha);
+}
+
+enum shape_mode { SHAPE_FILL, SHAPE_BLEND, SHAPE_OUTSIDE };
+
+/* One rounded rectangle: SHAPE_FILL paints colour inside, SHAPE_BLEND blends
+ * it in at `alpha`, SHAPE_OUTSIDE paints colour over the corners outside the
+ * curve (rounding something already drawn square). Edges are anti-aliased. */
+static void round_shape(struct gfx_surface *s, int x, int y, int w, int h, int r, uint32_t colour,
+                        uint32_t alpha, enum shape_mode mode)
 {
     if (w <= 0 || h <= 0)
         return;
@@ -103,11 +130,40 @@ void gfx_fill_round_rect(struct gfx_surface *s, int x, int y, int w, int h, int 
         r = w / 2;
     if (r > h / 2)
         r = h / 2;
+    if (r > AA_MAX_R)
+        r = AA_MAX_R;
+    cov_build(r);
     for (int row = 0; row < h; row++) {
         int dy = row < r ? row : row >= h - r ? h - 1 - row : -1;
-        int in = dy < 0 ? 0 : corner_inset(r, dy);
-        gfx_fill_rect(s, x + in, y + row, w - 2 * in, 1, colour);
+        if (dy < 0) {                       /* a straight row */
+            if (mode == SHAPE_OUTSIDE)
+                continue;
+            if (mode == SHAPE_FILL) {
+                gfx_fill_rect(s, x, y + row, w, 1, colour);
+            } else {
+                struct gfx_rect c = clip(s, x, y + row, w, 1);
+                uint32_t *p = s->px + c.y * s->stride;
+                for (int col = c.x; col < c.x + c.w; col++)
+                    p[col] = gfx_mix(colour, p[col], alpha);
+            }
+            continue;
+        }
+        for (int col = 0; col < w; col++) {
+            int dx = col < r ? col : col >= w - r ? w - 1 - col : -1;
+            uint32_t cov = dx < 0 ? 255 : cov_tab[dy][dx];
+            if (mode == SHAPE_OUTSIDE)
+                put(s, x + col, y + row, colour, 255 - cov);
+            else if (mode == SHAPE_FILL)
+                put(s, x + col, y + row, colour, cov);
+            else
+                put(s, x + col, y + row, colour, cov * alpha / 255);
+        }
     }
+}
+
+void gfx_fill_round_rect(struct gfx_surface *s, int x, int y, int w, int h, int r, uint32_t colour)
+{
+    round_shape(s, x, y, w, h, r, colour, 255, SHAPE_FILL);
 }
 
 void gfx_fill_circle(struct gfx_surface *s, int cx, int cy, int r, uint32_t colour)
@@ -117,19 +173,7 @@ void gfx_fill_circle(struct gfx_surface *s, int cx, int cy, int r, uint32_t colo
 
 void gfx_round_corners(struct gfx_surface *s, int x, int y, int w, int h, int r, uint32_t outside)
 {
-    if (w <= 0 || h <= 0)
-        return;
-    if (r > w / 2)
-        r = w / 2;
-    if (r > h / 2)
-        r = h / 2;
-    for (int dy = 0; dy < r; dy++) {
-        int in = corner_inset(r, dy);
-        gfx_fill_rect(s, x, y + dy, in, 1, outside);
-        gfx_fill_rect(s, x + w - in, y + dy, in, 1, outside);
-        gfx_fill_rect(s, x, y + h - 1 - dy, in, 1, outside);
-        gfx_fill_rect(s, x + w - in, y + h - 1 - dy, in, 1, outside);
-    }
+    round_shape(s, x, y, w, h, r, outside, 255, SHAPE_OUTSIDE);
 }
 
 struct gfx_surface gfx_sub(const struct gfx_surface *s, struct gfx_rect r)
@@ -174,20 +218,7 @@ uint32_t gfx_mix(uint32_t a, uint32_t b, uint32_t alpha)
 void gfx_blend_round_rect(struct gfx_surface *s, int x, int y, int w, int h, int r,
                           uint32_t colour, uint32_t alpha)
 {
-    if (w <= 0 || h <= 0)
-        return;
-    if (r > w / 2)
-        r = w / 2;
-    if (r > h / 2)
-        r = h / 2;
-    for (int row = 0; row < h; row++) {
-        int dy = row < r ? row : row >= h - r ? h - 1 - row : -1;
-        int in = dy < 0 ? 0 : corner_inset(r, dy);
-        struct gfx_rect c = clip(s, x + in, y + row, w - 2 * in, 1);
-        uint32_t *p = s->px + c.y * s->stride;
-        for (int col = c.x; col < c.x + c.w; col++)
-            p[col] = gfx_mix(colour, p[col], alpha);
-    }
+    round_shape(s, x, y, w, h, r, colour, alpha, SHAPE_BLEND);
 }
 
 void gfx_darken(struct gfx_surface *s, int x, int y, int w, int h, uint32_t alpha)
