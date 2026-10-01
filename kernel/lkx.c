@@ -104,9 +104,8 @@ static void register_one(const char *manifest_name)
         return;
     memcpy(f->path, manifest_name, (size_t)dir);
     memcpy(f->path + dir, entry, strlen(entry) + 1);
-    const void *prog;
     uint32_t prog_size;
-    if (ramdisk_find(f->path, &prog, &prog_size)) {
+    if (ramdisk_size(f->path, &prog_size)) {          /* read when it's opened */
         kprintf("lkx: %s: its program %s isn't in the ramdisk\n", manifest_name, f->path);
         return;
     }

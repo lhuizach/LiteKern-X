@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """LiteKern X - build step: a wallpaper PNG -> the kernel's packed format.
 
-Usage: python3 tools/wallpaper-pack.py WALLPAPER.png OUT.lkxw
+Usage: python3 tools/wallpaper-pack.py [--thumb] WALLPAPER.png OUT.lkxw
+
+--thumb packs a 160x94 preview instead (for the Settings app).
 
 The kernel has no PNG decoder and can't hold a raw 1024x600 image (2.4 MB,
 over its 448 KiB limit), so the image is packed the way PNG packs it, only
@@ -68,15 +70,45 @@ def hexrgb(c):
     return (c[0] << 16) | (c[1] << 8) | c[2]
 
 
+THUMB_W, THUMB_H = 160, 94     # the Settings app's previews
+
+
+def shrink(px, w, h, tw, th):
+    """Box-average px (w x h) down to tw x th."""
+    out = []
+    for ty in range(th):
+        y0, y1 = ty * h // th, (ty + 1) * h // th
+        row = []
+        for tx in range(tw):
+            x0, x1 = tx * w // tw, (tx + 1) * w // tw
+            r = g = b = n = 0
+            for y in range(y0, y1):
+                line = px[y]
+                for x in range(x0, x1):
+                    p = line[x]
+                    r += p[0]
+                    g += p[1]
+                    b += p[2]
+                    n += 1
+            row.append((r // n, g // n, b // n, 255))
+        out.append(row)
+    return out
+
+
 def main():
-    if len(sys.argv) != 3:
-        fail("usage: wallpaper-pack.py WALLPAPER.png OUT.lkxw")
-    src, out = sys.argv[1], sys.argv[2]
+    args = [a for a in sys.argv[1:] if a != "--thumb"]
+    thumb = "--thumb" in sys.argv
+    if len(args) != 2:
+        fail("usage: wallpaper-pack.py [--thumb] WALLPAPER.png OUT.lkxw")
+    src, out = args
     w, h, px = read_rgba(src)
     if (w, h) != (W, H):
         fail(f"{src}: is {w}x{h}, must be {W}x{H} (docs/ASSET-PROMPTS.md §8)")
     if any(p[3] != 255 for row in px for p in row):
         fail(f"{src}: has transparency; wallpapers must be opaque")
+    if thumb:                       # a 160x94 preview, packed the same way
+        px = shrink(px, w, h, THUMB_W, THUMB_H)
+        w, h = THUMB_W, THUMB_H
 
     rgb_rows = [bytes(c for p in row for c in p[:3]) for row in px]
     raw, prev = bytearray(), bytes(3 * w)

@@ -187,7 +187,7 @@ check "binds the drivers (COM1, display, keyboard, touchpad, clock, disks)" \
 
 check "boots to the desktop (top bar, dock, wallpaper)" \
     '^console: 128x48 characters, video BIOS font at 0x[0-9a-f]{5}$' \
-    '^splash: logo$' \n    '^ramdisk: [0-9]+ files, [0-9]+ KB, read in [0-9]+ ms$' \n    '^wallpaper: crossing, 1024x600, [0-9]+ KB packed, unpacked and checked in [0-9]+ ms$' \
+    '^splash: logo$' \n    '^ramdisk: [0-9]+ files, [0-9]+ KB, index read in [0-9]+ ms$' \n    '^wallpaper: crossing, 1024x600, [0-9]+ KB packed, unpacked and checked in [0-9]+ ms$' \
     '^lkx: Files \(apps/files/files\.lkx, [0-9]+ KB\)$' \
     "^screen: corner $DESKTOP$" \
     "^screen: has $WHITE in 0,0,120,30: yes$" \
@@ -360,10 +360,14 @@ check "shell: Home closes the open app" \
     "^screen: corner $DESKTOP$" \
     '!PANIC'
 
-# Settings (Appearance): the Light card (472-672 x 124-244), Right = the next
-# accent, the "None" background (300-460 x 416-510). The window must turn
-# light at once (window_bg fafafb), and the kernel logs each change.
-KEYS="move:$((SETTINGS_X - 512)),344 press:1 release sleep:1.5 move:$((572 - SETTINGS_X)),-544 press:1 release sleep:0.5 right sleep:0.3 move:-192,279 press:1 release sleep:0.5" \
+# Settings (Appearance), laid out like apps/settings/settings.c: the Light
+# card (y 124-244), Right = the next accent, the "None" background (y
+# 416-510), first in the row of wallpapers. The window must turn light at
+# once (window_bg fafafb), and the kernel logs each change.
+nwall=$(ls assets/wallpapers/*.png | grep -vc -- '-light\.png$')
+row_w=$(( (nwall + 1) * 160 + nwall * 24 )); [ "$row_w" -lt 424 ] && row_w=424
+sx0=$(( (1024 - row_w) / 2 )); light_x=$((sx0 + 324)); none_x=$((sx0 + 80))
+KEYS="move:$((SETTINGS_X - 512)),344 press:1 release sleep:1.5 move:$((light_x - SETTINGS_X)),-544 press:1 release sleep:0.5 right sleep:0.3 move:$((none_x - light_x)),279 press:1 release sleep:0.5" \
 KEYS_DONE='^appearance: light, accent teal, wallpaper none' SCREEN="has=fafafb@60,300,240,600" \
     boot_until build/litekernx.img "$done_re" 30
 check "Settings: style, accent and background change at once" \

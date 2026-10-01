@@ -52,6 +52,7 @@ ICON_ASSETS := assets/icons.json $(wildcard assets/icons/*.png)
 # (docs/ASSET-PROMPTS.md §8).
 WALLPAPER_PNGS := $(wildcard assets/wallpapers/*.png)
 WALLPAPER_LKXW := $(patsubst assets/wallpapers/%.png,$(BUILD)/gen/wallpapers/%.lkxw,$(WALLPAPER_PNGS))
+WALLPAPER_THUMBS := $(patsubst assets/wallpapers/%.png,$(BUILD)/gen/wallpapers/%.thumb.lkxw,$(WALLPAPER_PNGS))
 
 # KERN86 apps (Phase 2 section 5): each folder in apps/ holds kerns.json and C
 # sources, built against the SDK (sdk/) into a .lkx and packed into the
@@ -68,7 +69,7 @@ SDK_OBJS     := $(BUILD)/sdk/crt0.asm.o $(BUILD)/sdk/sdk.o $(BUILD)/sdk/gfx.o \
 APP_LKX      := $(foreach p,$(APP_PATHS),$(BUILD)/$(p)/$(notdir $(p)).lkx)
 RAMDISK_ARGS := $(foreach p,$(APP_PATHS),apps/$(notdir $(p))/kerns.json=$(p)/kerns.json \
                 apps/$(notdir $(p))/$(notdir $(p)).lkx=$(BUILD)/$(p)/$(notdir $(p)).lkx) \
-                $(foreach w,$(WALLPAPER_LKXW),wallpapers/$(notdir $(w))=$(w))
+                $(foreach w,$(WALLPAPER_LKXW) $(WALLPAPER_THUMBS),wallpapers/$(notdir $(w))=$(w))
 
 # Ring 3 test programs: flat binaries at USER_BASE, embedded into self-test
 # kernels by tests/kernel/user_programs.asm.
@@ -128,7 +129,7 @@ $(BUILD)/$(1)/$(notdir $(1)).lkx: $(patsubst $(1)/%.c,$(BUILD)/$(1)/%.o,$(wildca
 endef
 $(foreach p,$(APP_PATHS),$(eval $(call APP_RULE,$(p))))
 
-$(BUILD)/gen/ramdisk.bin: $(APP_LKX) $(WALLPAPER_LKXW) $(foreach p,$(APP_PATHS),$(p)/kerns.json) tools/mkramdisk.py
+$(BUILD)/gen/ramdisk.bin: $(APP_LKX) $(WALLPAPER_LKXW) $(WALLPAPER_THUMBS) $(foreach p,$(APP_PATHS),$(p)/kerns.json) tools/mkramdisk.py
 	@mkdir -p $(dir $@)
 	python3 tools/mkramdisk.py $@ $(RAMDISK_ARGS)
 $(BUILD)/kernel/bios_thunk_blob.asm.o: $(BUILD)/bios_thunk.bin
@@ -138,6 +139,10 @@ $(BUILD)/kernel/bios_thunk_blob.asm.o: $(BUILD)/bios_thunk.bin
 $(BUILD)/bios_thunk.bin: boot/bios_thunk.asm
 	@mkdir -p $(dir $@)
 	$(NASM) -o $@ $<
+
+$(BUILD)/gen/wallpapers/%.thumb.lkxw: assets/wallpapers/%.png tools/wallpaper-pack.py tools/lkx_png.py
+	@mkdir -p $(dir $@)
+	python3 tools/wallpaper-pack.py --thumb $< $@
 
 $(BUILD)/gen/wallpapers/%.lkxw: assets/wallpapers/%.png tools/wallpaper-pack.py tools/lkx_png.py
 	@mkdir -p $(dir $@)

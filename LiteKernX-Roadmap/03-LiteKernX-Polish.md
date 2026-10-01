@@ -1,25 +1,25 @@
 # LiteKern X — Phase 3: Polish
 **Budget: ~15 hrs** (was ~10; +5 for §5 Customisation, added 2026-09-29)
-**Prerequisite: Phase 2 fully done (see 02-LiteKernX-GUI.md Done Criteria)**
+**Prerequisite: Phase 2 fully done (see 02-LiteKernX-GUI.md Done Criteria)** — started 2026-10-01 by the user's decision, with Phase 2's EeePC runs still open (see the note under Phase 2's Done Criteria)
 
 Goal: take the working-but-plain GUI/apps from Phase 2 and make them feel finished. This is deliberately last — polishing something unstable just means redoing the polish later.
 
 ---
 
 ## 1. Visual polish (~3 hrs)
-- [ ] Consistent spacing/margins across widgets
-- [ ] Color scheme finalized (even a simple one) — apply consistently rather than per-screen. Every widget reads its colours from the theme (§5), never hard-coded values
-- [ ] Icon/cursor set finalized: the PNG cursors and SVG icons in `assets/` (rules in `docs/ASSET-PROMPTS.md`)
+- [x] Consistent spacing/margins across widgets — the theme's spacing tokens (margin 12, spacing 6, radius 6/12, row 40, header 46) everywhere; corners and circles are now anti-aliased (4x4-sampled coverage, `kernel/gfx.c`); text is the proportional anti-aliased GUI font (§5)
+- [x] Color scheme finalized (even a simple one) — apply consistently rather than per-screen. Every widget reads its colours from the theme (§5), never hard-coded values — Adwaita dark and light (`kernel/theme.c`); widgets shade with the theme's `ink`. Deliberate exceptions: the shell (top bar, its menu, the dock) stays dark in both styles like GNOME Shell, and the splash is black
+- [ ] Icon/cursor set finalized: the PNG cursors and SVG icons in `assets/` (rules in `docs/ASSET-PROMPTS.md`) — the set is in place and themed nowhere: the user's arrow cursor, the logo, and 48x48 PNG app icons (icons became PNG in Phase 2). Files, Log, Settings and Calculator still use the generated placeholders (`tools/icon-placeholders.py`): **the user's own icons replace them** (docs/ASSET-PROMPTS.md §4)
 
 ## 2. Animations (~2.5 hrs)
-- [ ] Window/app open-close transitions (keep them short — this is a low-power Atom CPU, don't tank performance for polish)
-- [ ] Button/widget feedback (press states, hover if input supports it)
-- [ ] Measure frame cost of animations — if they hurt responsiveness, cut them, don't just accept it
+- [x] Window/app open-close transitions (keep them short — this is a low-power Atom CPU, don't tank performance for polish) — the window grows out of the clicked icon and shrinks back into its dock icon: 8 frames, 140 ms, eased (`kernel/desktop.c`)
+- [x] Button/widget feedback (press states, hover if input supports it) — hover and pressed on every button, list row, dock item, app-menu tile and top-bar button; disabled and focused states
+- [ ] Measure frame cost of animations — if they hurt responsiveness, cut them, don't just accept it — measured and logged on every run (`anim: ... slowest frame N ms`; QEMU 2-5 ms); a frame over 30 ms skips the rest automatically. **Needs the EeePC numbers**
 
 ## 3. App polish (~3 hrs)
-- [ ] Revisit the one test app from Phase 2 — make it a real, presentable minimal app
-- [ ] Add more small KERN86 apps if time allows, each fully finished (this is the anti-v1 rule: finished small beats unfinished many). There's no fixed cap any more (the 3-app limit was removed 2026-09-29), but don't start a new app until the previous one is done
-- [ ] Consistent app chrome/UI conventions across apps
+- [x] Revisit the one test app from Phase 2 — make it a real, presentable minimal app — Files: Places, folders, create/rename/delete with dialogs, a text viewer (up to 64 KB), keyboard shortcuts, follows theme changes
+- [x] Add more small KERN86 apps if time allows, each fully finished (this is the anti-v1 rule: finished small beats unfinished many). There's no fixed cap any more (the 3-app limit was removed 2026-09-29), but don't start a new app until the previous one is done — **Settings** (Appearance) and **Calculator** (exact fixed-point decimals, errors for overflow and / 0), each tested
+- [x] Consistent app chrome/UI conventions across apps — every app: the header bar (title, back button where it applies, close), content on window_bg with the same margins, the shared widgets, Esc/Backspace to go back, K86_EVENT_THEME to redraw
 
 ## 4. Final stability + performance pass (~1.5 hrs)
 - [ ] Re-check boot time against `docs/BOOT-BUDGET.md`: ≤ 5 s bootloader entry → desktop, hard ceiling 10 s, BIOS POST excluded, with visible progress the whole way (the budget was ≤ 1000 ms until 2026-09-29)
@@ -28,16 +28,16 @@ Goal: take the working-but-plain GUI/apps from Phase 2 and make them feel finish
 
 ## 5. Customisation, GNOME-style (~5 hrs, added 2026-09-29)
 A few well-chosen options, like GNOME/libadwaita, not KDE-style "configure everything". Do §1–§3 first so there's a finished look to vary.
-- [ ] Theme tokens: `struct theme` (`window_bg`, `view_bg`, `headerbar_bg`, `fg`, `fg_dim`, `accent_bg`, `accent_fg`, `border`, `warning`, `destructive`, plus spacing) behind `theme_get()`; no widget or app hard-codes a colour
-- [ ] Style: Dark (navy) and Light (mist) themes, both built from the `docs/ASSET-PROMPTS.md` palette
-- [ ] Accent colour: 5–6 presets (sky default); changing it only swaps `accent_bg`/`accent_fg`
-- [ ] Wallpaper: a solid colour, plus 3–5 compressed images; measure the `assets` boot phase on the EeePC (`docs/BOOT-BUDGET.md`) — first one made (2026-09-30): `assets/wallpapers/crossing.png` + `crossing-light.png` (1024×600, 155 KB / 96 KB, pass `docs/ASSET-PROMPTS.md` §8). **Showing one wallpaper came forward into Phase 2** (the shell, 2026-09-30: packed into the kernel, unpacked at boot). Left for here: choosing between several (and the light one with the light style), which needs them off the kernel image (the ramdisk) to stay under 448 KiB
-- [ ] Boot splash: the logo (`assets/logo.png`, made 2026-09-30) with a progress bar, or the scrolling boot log; either way, visible progress the whole boot
-- [ ] Proportional anti-aliased font like v1's, replacing the 8×16 bitmap font in the GUI (the console keeps the bitmap font)
-- [ ] Applying a change is one `screen_damage_all()` + present, not a reboot
-- [ ] Settings UI: an "Appearance" page (style preview, accent dots, wallpaper grid), in the shell or as a KERN86 app; add theme syscalls only when that app needs them
-- [ ] Build-time defaults (e.g. `make THEME=light ACCENT=teal`), since settings aren't saved across reboots until Phase 5 §3
-- [ ] Cursors stay black and white and icons stay fixed; neither is themed
+- [x] Theme tokens: `struct theme` (`window_bg`, `view_bg`, `headerbar_bg`, `fg`, `fg_dim`, `accent_bg`, `accent_fg`, `border`, `warning`, `destructive`, plus spacing) behind `theme_get()`; no widget or app hard-codes a colour — apps get their copy with SYS_THEME_GET
+- [x] Style: Dark (navy) and Light (mist) themes, both built from the `docs/ASSET-PROMPTS.md` palette — superseded by the Adwaita decision (2026-09-30): libadwaita's dark and light palettes
+- [x] Accent colour: 5–6 presets (sky default); changing it only swaps `accent_bg`/`accent_fg` — GNOME's: blue (default), teal, green, orange, red, purple
+- [x] Wallpaper: a solid colour, plus 3–5 compressed images; measure the `assets` boot phase on the EeePC (`docs/BOOT-BUDGET.md`) — first one made (2026-09-30): `assets/wallpapers/crossing.png` + `crossing-light.png` (1024×600, 155 KB / 96 KB, pass `docs/ASSET-PROMPTS.md` §8). **Showing one wallpaper came forward into Phase 2** (the shell, 2026-09-30: packed into the kernel, unpacked at boot). Done here: the ramdisk moved onto the disk (read lazily: only its index at boot), so any number fit; four wallpapers, each with a light version and a build-time thumbnail: crossing (the user's), dusk, aurora, drift (`tools/make-wallpapers-more.py`), plus none. **The `assets` boot phase still needs measuring on the EeePC**
+- [x] Boot splash: the logo (`assets/logo.png`, made 2026-09-30) with a progress bar, or the scrolling boot log; either way, visible progress the whole boot — `make SPLASH=logo` (default) or `SPLASH=log`; the bar moves at each boot step
+- [x] Proportional anti-aliased font like v1's, replacing the 8×16 bitmap font in the GUI (the console keeps the bitmap font) — Ubuntu Sans in five styles, rasterised once into a committed atlas (`assets/fonts/`, licence noted there)
+- [x] Applying a change is one `screen_damage_all()` + present, not a reboot
+- [x] Settings UI: an "Appearance" page (style preview, accent dots, wallpaper grid), in the shell or as a KERN86 app; add theme syscalls only when that app needs them — `apps/settings`, with SYS_THEME_GET, SYS_APPEARANCE(_SET), SYS_WALLPAPER_THUMB
+- [x] Build-time defaults (e.g. `make THEME=light ACCENT=teal`), since settings aren't saved across reboots until Phase 5 §3 — `make STYLE=light ACCENT=teal WALLPAPER=dusk SPLASH=log`
+- [x] Cursors stay black and white and icons stay fixed; neither is themed
 
 ---
 

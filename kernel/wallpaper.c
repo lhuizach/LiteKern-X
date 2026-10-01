@@ -181,18 +181,32 @@ int wallpaper_thumb(const char *name, uint32_t *out, int w, int h)
 {
     struct header hd;
     uint32_t raw, raw_bytes;
-    int err = unpack(name, &hd, &raw, &raw_bytes);
+    /* The build makes a small "<name>.thumb" for each: much quicker than
+     * unpacking the whole wallpaper. Without one, the wallpaper itself. */
+    char small[40];
+    int k = 0;
+    for (; name[k] && k < 30; k++)
+        small[k] = name[k];
+    memcpy(small + k, ".thumb", 7);
+    int err = unpack(small, &hd, &raw, &raw_bytes);
+    if (err)
+        err = unpack(name, &hd, &raw, &raw_bytes);
     if (err)
         return err;
-    /* Average a box of source pixels for each thumbnail pixel. */
-    int stride = 1 + 3 * hd.w;
+    /* Average a box of source pixels for each thumbnail pixel (every other
+     * pixel of a full-size image: plenty for a preview). */
+    int stride = 1 + 3 * hd.w, step = hd.w >= 2 * w ? 2 : 1;
     for (int ty = 0; ty < h; ty++) {
         int y0 = ty * hd.h / h, y1 = (ty + 1) * hd.h / h;
+        if (y1 == y0)
+            y1 = y0 + 1;
         for (int tx = 0; tx < w; tx++) {
             int x0 = tx * hd.w / w, x1 = (tx + 1) * hd.w / w;
+            if (x1 == x0)
+                x1 = x0 + 1;
             uint32_t r = 0, g = 0, b = 0, n = 0;
-            for (int y = y0; y < y1; y += 2)
-                for (int x = x0; x < x1; x += 2, n++) {
+            for (int y = y0; y < y1 && y < hd.h; y += step)
+                for (int x = x0; x < x1 && x < hd.w; x += step, n++) {
                     const uint8_t *p = (const uint8_t *)raw + y * stride + 1 + x * 3;
                     r += p[0], g += p[1], b += p[2];
                 }
@@ -212,8 +226,9 @@ int wallpaper_list(char names[][32], int max)
         if (n < 17 || memcmp(f, "wallpapers/", 11) || strcmp(f + n - 5, ".lkxw"))
             continue;
         int len = n - 16;                   /* without "wallpapers/" and ".lkxw" */
-        if (len >= 32 || (len > 6 && !memcmp(f + 11 + len - 6, "-light", 6)))
-            continue;                       /* light variants go with their wallpaper */
+        if (len >= 32 || (len > 6 && !memcmp(f + 11 + len - 6, "-light", 6)) ||
+            (len > 6 && !memcmp(f + 11 + len - 6, ".thumb", 6)))
+            continue;                       /* light variants and previews go with theirs */
         memcpy(names[count], f + 11, (size_t)len);
         names[count][len] = '\0';
         count++;
