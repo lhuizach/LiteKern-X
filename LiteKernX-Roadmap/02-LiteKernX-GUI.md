@@ -50,15 +50,17 @@ Disks came off the Non-Goals list for the first app, Files (see `docs/NON-GOALS.
 - [ ] More apps may follow in this phase once that first one works end to end (the "one app before Polish" Non-Goal was removed 2026-09-29). Each has to meet the same bar: it loads from the ramdisk, runs in ring 3, and misbehaving never takes the kernel down.
 
 ## 6. Stability pass (~2 hrs)
-- [ ] Stress test: open/close app repeatedly, resize (if applicable), rapid input — look for leaks or crashes
-- [ ] Confirm page fault handler (Phase 1) actually catches bad app behavior instead of taking down the kernel
+- [x] Stress test: open/close app repeatedly, resize (if applicable), rapid input — look for leaks or crashes — the kernel logs free memory around every app run; the test opens and closes Files 16 times and sends a burst of keys and clicks 20 ms apart: memory comes back to the KiB every time, nothing crashes, Files still works. No resizing (one full-screen window)
+- [x] Confirm page fault handler (Phase 1) actually catches bad app behavior instead of taking down the kernel — the test apps in `tests/apps/` (a write to address 0, kernel pointers passed to calls, a hang stopped by the watchdog) each end only the app
 
 ---
 
 ## Phase 2 Done Criteria
-- [ ] GUI renders, responds to input, without crashing under normal use
-- [ ] At least one real KERN86 app runs through the full stack
-- [ ] Redraw is efficient — no full-screen redraw every frame in normal operation
-- [ ] A misbehaving app doesn't crash the kernel (thanks to Phase 1's isolation work)
+- [x] GUI renders, responds to input, without crashing under normal use
+- [x] At least one real KERN86 app runs through the full stack
+- [x] Redraw is efficient — no full-screen redraw every frame in normal operation
+- [x] A misbehaving app doesn't crash the kernel (thanks to Phase 1's isolation work)
 
 **Do not start Phase 3 (Polish) until every box above is checked.**
+
+> **2026-10-01, the user's decision:** Phase 3 starts now. Every Done Criterion above is met in QEMU; what's still open needs the EeePC, which wasn't at hand: §1's rendering timings (`litekernx-gfx-test.img`), the BIOS disk and ATA runs (§5a), and the wallpaper unpack time (`docs/HARDWARE-TEST.md` §4E). They stay open here and are done at the next EeePC session, before Phase 4.

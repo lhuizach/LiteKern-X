@@ -432,6 +432,30 @@ check "apps: a crash, bad calls and a hang each end only the app" \
     '^user: files: open Boot disk' \
     '!still running|PANIC'
 
+# Stability (Phase 2 section 6): Files opened and closed 15 times, then a burst
+# of keys and clicks 20 ms apart. Every app run must give back all of its
+# memory, and Files must still work at the end. On a scratch copy of the image.
+mkdir -p build/test-stress
+cp build/litekernx.img build/test-stress/disk.img
+stress="gap:0.1"
+for i in $(seq 15); do
+    stress+=" move:-60,344 press:1 release move:549,-675 press:1 release move:-489,331"
+done
+stress+=" move:-60,344 press:1 release sleep:1 gap:0.02"
+for i in $(seq 60); do stress+=" down up"; done
+for i in $(seq 30); do stress+=" press:1 release"; done
+stress+=" home end pgdn pgup ctrl-n a b c esc f2 esc delete esc gap:0.15 sleep:0.5 ctrl-n o k ret"
+KEYS="$stress" KEYS_DONE='^user: files: create ok' boot_until build/test-stress/disk.img "$done_re" 90
+opens=$(grep -c '^desktop: open Files$' <<<"$out")
+mem=$(grep '^lkx: memory free' <<<"$out" | sort -u | wc -l)
+out+=$'\n'"stress: $opens opens; $mem distinct memory lines"
+out+=$'\n'$(grep '^lkx: memory free' <<<"$out" | awk '{ if ($4 != $7) bad = 1 } END { print bad ? "stress: LEAK" : "stress: no leak" }')
+check "stability: 16 opens and closes, a fast input burst, no leak, still working" \
+    '^stress: 16 opens; 1 distinct memory lines$' \
+    '^stress: no leak$' \
+    '^user: files: create ok$' \
+    '!PANIC|crashed|stopped responding'
+
 boot_until build/test-drivers/litekernx.img "$selftest_done_re" 20
 check "driver layer + display driver self-test" \
     '^dev pci 00:01\.1 driver=selftest-ide bound$' \
