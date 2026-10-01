@@ -18,7 +18,9 @@
 #include "kernel/icon.h"
 #include "kernel/input.h"
 #include "kernel/lkx.h"
+#include "kernel/pmm.h"
 #include "kernel/power.h"
+#include "kernel/timing.h"
 #include "kernel/printk.h"
 #include "kernel/rtc.h"
 #include "kernel/screen.h"
@@ -412,10 +414,9 @@ static void draw_desktop(void)
     draw_dock();
 }
 
-void desktop_show(void)
+/* The whole desktop into the back buffer (not shown yet). */
+static void render_desktop(void)
 {
-    if (!screen_ready() || wm_is_open())
-        return;
     started = 1;
     console_set_visible(0);     /* the log keeps recording, but no longer draws over us */
     menu_open = 0;
@@ -424,12 +425,154 @@ void desktop_show(void)
     draw_topbar();
     draw_desktop();
     screen_damage_all();
+}
+
+void desktop_show(void)
+{
+    if (!screen_ready() || wm_is_open())
+        return;
+    render_desktop();
+    screen_present();
+}
+
+/* --- open and close animations (Phase 3 §2) ----------------------------------------
+ *
+ * Opening an app grows its window out of the icon that was clicked; closing
+ * shrinks it back into its dock icon, GNOME-like and short (ANIM_MS). Each
+ * frame is timed: if one takes longer than ANIM_MAX_FRAME_MS (a slow
+ * machine), the rest are skipped, so an animation never makes things feel
+ * slower. The cost is logged for measuring on the EeePC. */
+
+#define ANIM_FRAMES 8
+#define ANIM_MS 140
+#define ANIM_MAX_FRAME_MS 30
+
+static uint32_t *anim_save;     /* a copy of the desktop, for closing */
+
+/* Ease-out: fast start, gentle stop. t and the result are 0..1024. */
+static int ease(int t)
+{
+    int u = 1024 - t;
+    return 1024 - (int)((int64_t)u * u / 1024 * u / 1024);
+}
+
+static struct gfx_rect lerp(struct gfx_rect a, struct gfx_rect b, int t)
+{
+    int e = ease(t);
+    return (struct gfx_rect){ a.x + (b.x - a.x) * e / 1024, a.y + (b.y - a.y) * e / 1024,
+                              a.w + (b.w - a.w) * e / 1024, a.h + (b.h - a.h) * e / 1024 };
+}
+
+/* The window as it grows or shrinks: its background and header bar. */
+static void draw_window_frame(struct gfx_rect r, int t)
+{
+    const struct theme *th = T();
+    int radius = 16 - 16 * ease(t) / 1024;
+    gfx_fill_round_rect(S(), r.x, r.y, r.w, r.h, radius, th->window_bg);
+    int head = th->headerbar_h * r.h / (S()->h - th->topbar_h);
+    if (head > 2) {
+        gfx_fill_round_rect(S(), r.x, r.y, r.w, head, radius, th->headerbar_bg);
+        gfx_fill_rect(S(), r.x, r.y + head - (head > radius ? head - radius : 0), r.w,
+                      head > radius ? head - radius : 0, th->headerbar_bg);
+    }
+}
+
+static struct gfx_rect window_rect(void)
+{
+    return (struct gfx_rect){ 0, T()->topbar_h, S()->w, S()->h - T()->topbar_h };
+}
+
+/* Wait until `ms` after t0; 0 if the frame just drawn was too slow. */
+static int frame_wait(uint32_t t0, uint32_t frame_start, int ms)
+{
+    if (uptime_ms() - frame_start > ANIM_MAX_FRAME_MS)
+        return 0;
+    while (uptime_ms() - t0 < (uint32_t)ms)
+        __asm__ volatile("pause");
+    return 1;
+}
+
+static void anim_open(struct gfx_rect from, const char *name)
+{
+    uint32_t t0 = uptime_ms(), worst = 0;
+    int frames = 0;
+    struct gfx_rect to = window_rect();
+    for (int i = 1; i <= ANIM_FRAMES; i++) {
+        uint32_t f0 = uptime_ms();
+        struct gfx_rect r = lerp(from, to, i * 1024 / ANIM_FRAMES);
+        draw_window_frame(r, i * 1024 / ANIM_FRAMES);
+        screen_damage(r.x, r.y, r.w, r.h);
+        screen_present();
+        frames++;
+        if (uptime_ms() - f0 > worst)
+            worst = uptime_ms() - f0;
+        if (!frame_wait(t0, f0, i * ANIM_MS / ANIM_FRAMES))
+            break;
+    }
+    kprintf("anim: open %s, %d frames, %u ms, slowest frame %u ms\n", name, frames,
+            uptime_ms() - t0, worst);
+}
+
+/* The desktop is drawn (not shown) when this starts. */
+static void anim_close(struct gfx_rect to, const char *name)
+{
+    struct gfx_surface *s = S();
+    if (!anim_save)
+        return;                 /* no memory for it: no close animation */
+    struct gfx_surface save = { anim_save, s->w, s->h, s->w };
+    gfx_blit(&save, 0, 0, s, 0, 0, s->w, s->h);
+    uint32_t t0 = uptime_ms(), worst = 0;
+    int frames = 0;
+    struct gfx_rect from = window_rect(), prev = from;
+    for (int i = 0; i < ANIM_FRAMES; i++) {
+        uint32_t f0 = uptime_ms();
+        struct gfx_rect r = lerp(from, to, i * 1024 / ANIM_FRAMES);
+        gfx_blit(s, prev.x, prev.y, &save, prev.x, prev.y, prev.w, prev.h);
+        draw_window_frame(r, 1024 - i * 1024 / ANIM_FRAMES);
+        screen_damage(prev.x, prev.y, prev.w, prev.h);
+        screen_present();
+        prev = r;
+        frames++;
+        if (uptime_ms() - f0 > worst)
+            worst = uptime_ms() - f0;
+        if (!frame_wait(t0, f0, (i + 1) * ANIM_MS / ANIM_FRAMES))
+            break;
+    }
+    gfx_blit(s, prev.x, prev.y, &save, prev.x, prev.y, prev.w, prev.h);
+    screen_damage_all();
+    kprintf("anim: close %s, %d frames, %u ms, slowest frame %u ms\n", name, frames,
+            uptime_ms() - t0, worst);
+}
+
+/* Where an app's icon is in the dock (where its window shrinks to). */
+static struct gfx_rect app_icon_rect(const struct app *a)
+{
+    int i = (int)(a - builtin_apps);
+    struct gfx_rect r = dock_item_rect(i);
+    return (struct gfx_rect){ r.x + (r.w - DOCK_ICON) / 2, r.y + (r.h - DOCK_ICON) / 2, DOCK_ICON,
+                              DOCK_ICON };
+}
+
+/* After an app: the desktop comes back, the window shrinking into its icon. */
+static void finish_app(const struct app *a)
+{
+    kprintf("desktop: close %s\n", a->name);
+    running = 0;
+    wm_close();
+    if (!screen_ready())
+        return;
+    render_desktop();
+    anim_close(app_icon_rect(a), a->name);
     screen_present();
 }
 
 void desktop_start(void)
 {
     /* The build-time defaults (make STYLE=... ACCENT=... WALLPAPER=...). */
+    if (screen_ready()) {       /* the close animation's copy of the desktop, made once */
+        uint32_t bytes = (uint32_t)(S()->w * S()->h * 4);
+        anim_save = (uint32_t *)pmm_alloc_contiguous((bytes + PAGE_SIZE - 1) / PAGE_SIZE);
+    }
     ramdisk_init();             /* apps and wallpapers, from the boot disk */
     splash_progress(65);
     apps_init();
@@ -472,9 +615,11 @@ void desktop_refresh(void)
     screen_present();
 }
 
-static void launch(const struct app *a)
+static void launch(const struct app *a, struct gfx_rect from)
 {
     kprintf("desktop: open %s\n", a->name);
+    menu_open = 0;
+    anim_open(from, a->name);
     grid_open = 0;
     running = a;
     wm_open(a->name);
@@ -485,10 +630,7 @@ static void launch(const struct app *a)
         a->open();
     if (a->lkx) {               /* a ring 3 app: it runs, here, until it exits */
         lkx_run(a);
-        kprintf("desktop: close %s\n", a->name);
-        running = 0;
-        wm_close();
-        desktop_show();
+        finish_app(a);
     }
 }
 
@@ -499,13 +641,15 @@ static void close_app(void)
         wm_request_close();     /* the app closes itself (or is ended at its next wait) */
         return;
     }
-    if (running)
-        kprintf("desktop: close %s\n", running->name);
-    if (running && running->close)
-        running->close();
-    running = 0;
-    wm_close();
-    desktop_show();
+    if (!running) {             /* a window no app owns (the self-tests open one) */
+        wm_close();
+        desktop_show();
+        return;
+    }
+    const struct app *a = running;
+    if (a->close)
+        a->close();
+    finish_app(a);
 }
 
 /* Open or close the app menu. */
@@ -540,7 +684,7 @@ static void activate(const struct target *g)
         break;
     case T_TILE:
     case T_DOCK:
-        launch(&builtin_apps[g->app]);
+        launch(&builtin_apps[g->app], g->r);
         break;
     }
 }
