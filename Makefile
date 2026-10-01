@@ -24,7 +24,7 @@ LIBGCC  := $(shell $(CC) -m32 -print-libgcc-file-name)
 KERNEL_SRCS := $(wildcard kernel/*.c drivers/*.c kernel/*.asm) $(EXTRA_KERNEL_SRCS)
 KERNEL_OBJS := $(patsubst %.c,$(BUILD)/%.o,$(filter %.c,$(KERNEL_SRCS))) \
                $(patsubst %.asm,$(BUILD)/%.asm.o,$(filter %.asm,$(KERNEL_SRCS))) \
-               $(BUILD)/gen/cursors.o $(BUILD)/gen/icons.o $(BUILD)/gen/uifont.o
+               $(BUILD)/gen/cursors.o $(BUILD)/gen/icons.o $(BUILD)/gen/uifont.o $(BUILD)/gen/splash.o
 
 # The disk image: the boot area (MBR, stage 2, kernel), then the ramdisk at
 # RAMDISK_LBA (512 KiB: apps, wallpapers; read by the kernel at boot through
@@ -98,7 +98,7 @@ $(BUILD)/gen/defaults.h: FORCE
 	cmp -s $@.new $@ && rm -f $@.new || mv $@.new $@
 
 $(BUILD)/kernel/main.o $(BUILD)/kernel/ramdisk.o $(BUILD)/kernel/theme.o $(BUILD)/kernel/wallpaper.o \
-$(BUILD)/kernel/desktop.o: $(BUILD)/gen/defaults.h
+$(BUILD)/kernel/desktop.o $(BUILD)/kernel/splash.o: $(BUILD)/gen/defaults.h
 
 # --- apps and the ramdisk ------------------------------------------------------
 
@@ -163,6 +163,14 @@ $(BUILD)/gen/uifont.o: $(BUILD)/gen/uifont.c kernel/text.h
 $(BUILD)/sdk/uifont.o: $(BUILD)/gen/uifont.c kernel/text.h
 	@mkdir -p $(dir $@)
 	$(CC) $(APP_CFLAGS) -c -o $@ $<
+
+# The boot splash's logo (assets/logo.png, 128x128).
+$(BUILD)/gen/splash.c: assets/splash.json assets/logo.png tools/icons2c.py tools/lkx_png.py
+	@mkdir -p $(dir $@)
+	python3 tools/icons2c.py assets/splash.json $@ splash_images
+
+$(BUILD)/gen/splash.o: $(BUILD)/gen/splash.c kernel/icon.h
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD)/gen/icons.c: $(ICON_ASSETS) tools/icons2c.py tools/lkx_png.py
 	@mkdir -p $(dir $@)

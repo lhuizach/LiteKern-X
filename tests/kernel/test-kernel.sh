@@ -187,7 +187,7 @@ check "binds the drivers (COM1, display, keyboard, touchpad, clock, disks)" \
 
 check "boots to the desktop (top bar, dock, wallpaper)" \
     '^console: 128x48 characters, video BIOS font at 0x[0-9a-f]{5}$' \
-    '^ramdisk: [0-9]+ files, [0-9]+ KB, read in [0-9]+ ms$' \n    '^wallpaper: crossing, 1024x600, [0-9]+ KB packed, unpacked and checked in [0-9]+ ms$' \
+    '^splash: logo$' \n    '^ramdisk: [0-9]+ files, [0-9]+ KB, read in [0-9]+ ms$' \n    '^wallpaper: crossing, 1024x600, [0-9]+ KB packed, unpacked and checked in [0-9]+ ms$' \
     '^lkx: Files \(apps/files/files\.lkx, [0-9]+ KB\)$' \
     "^screen: corner $DESKTOP$" \
     "^screen: has $WHITE in 0,0,120,30: yes$" \

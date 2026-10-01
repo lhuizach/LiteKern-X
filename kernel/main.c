@@ -20,7 +20,10 @@
 #include "kernel/pmm.h"
 #include "kernel/printk.h"
 #include "kernel/serial.h"
+#include "kernel/splash.h"
 #include "kernel/status.h"
+#include "kernel/theme.h"
+#include "defaults.h"
 #include "kernel/storage.h"
 #include "kernel/string.h"
 #include "kernel/timing.h"
@@ -251,7 +254,11 @@ void kmain(uint32_t magic, const struct boot_info *handoff)
         kprintf("console: unavailable (%s); status colour only\n",
                 screen_err < 0 ? "no screen" : "no BIOS font");
     status_show(STATUS_READY);
-    if (screen_ready() && cursor_init() < 0)
+    /* The build-time look (make STYLE= ACCENT=), then the splash over the
+     * log; the pointer appears with the desktop. */
+    theme_set(theme_find_style(DEFAULT_STYLE), theme_find_accent(DEFAULT_ACCENT));
+    splash_start();
+    if (screen_ready() && !splash_active() && cursor_init() < 0)
         kprintf("cursor: no \"arrow\" cursor built in\n");
     uint64_t ready = rdtsc();
     boot_phase("first_frame", drivers_done, ready);
@@ -265,6 +272,7 @@ void kmain(uint32_t magic, const struct boot_info *handoff)
     pci_report();
     device_report();
     display_report();
+    splash_progress(30);
 
 #ifdef LKX_DIAG_VBIOS
     vbios_diag(bi);
@@ -297,5 +305,6 @@ void kmain(uint32_t magic, const struct boot_info *handoff)
 #endif
 
     storage_init();         /* the disks Files can open (reads each partition table) */
+    splash_progress(45);
     idle(bi);
 }
