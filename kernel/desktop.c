@@ -599,6 +599,8 @@ void desktop_start(void)
     } else {
         desktop_show();
     }
+    /* The boot budget's finish line (docs/BOOT-BUDGET.md: <= 5 s from stage 1). */
+    kprintf("[boot] desktop t=%u\n", uptime_ms());
     kprintf("desktop: ready\n");     /* everything is up: the tests wait for this */
 }
 

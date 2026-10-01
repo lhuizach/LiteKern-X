@@ -79,15 +79,26 @@ Boot it, then check:
 | The desktop | The crossing wallpaper fills the screen, with the top bar (clock showing the right time) and the dock |
 | **Log** app (dock) | A `wallpaper: 1024x600, ... unpacked and checked in N ms` line: **photo it** (N on the Atom) |
 | Log: `dev boot0 driver=bios-disk bound` | Present: the USB stick is reachable through the BIOS |
-| Log: `storage: boot0 partition at 2048 (FAT32): FAT32, read/write` | Present |
+| Log: `storage: boot0 partition at 8192 (FAT32): FAT32, read/write` | Present |
 | Log: `ata0: ...` | The internal disk's model and size, `primary master (read-only)`, then one `storage: ata0 partition ...` line per partition (Windows XP's is `NTFS or exFAT: not supported, left alone`). **Photo these lines** |
 | **Files** | Places lists the stick and the internal disk. On the stick, create a folder, a file, rename one, delete one |
 | Back on Windows | The stick shows exactly what Files left there. Run Windows' **error check** on it (right-click the drive, Properties, Tools, Check): it should find no problems |
 
 If Files or the log shows a `boot0: BIOS read ... failed (AH=0x..)` line, photo it: the AH code says what the BIOS didn't like.
 
+### F. Phase 3 polish (`litekernx.img`, 2026-10-01 and later)
+| What | Pass |
+|---|---|
+| Boot | The LiteKern X logo on black with a blue bar filling up, then the desktop. No scrolling text |
+| Log app: `[boot] desktop t=N` | **Photo it.** N is milliseconds from stage 1 to the desktop; the budget is 5000 |
+| Log app: `ramdisk: ... index read in N ms` | **Photo it** (the BIOS reading the stick) |
+| Log app: `anim: open ...` / `anim: close ...` | After opening and closing an app: **photo the "slowest frame" numbers.** Over 30 ms means the animation skips itself |
+| Text | Smooth, proportional text everywhere except the Log app |
+| Settings | Dark ↔ Light, the accent colours and the four wallpapers all change at once, and stay changed when you go back to the desktop |
+| Calculator and Files | Work with the touchpad and the keyboard. In Files, double-click `Welcome to LiteKern X.txt` to read it |
+
 ## 5. Send back
-The photos (or just the answers to the table). I'll tick the roadmap boxes, fill in the measurements table in `docs/BOOT-BUDGET.md`, and fix anything the real hardware disagrees with before Phase 2.
+The photos (or just the answers to the tables). I'll tick the roadmap boxes, fill in the measurements table in `docs/BOOT-BUDGET.md`, and fix anything the real hardware disagrees with.
 
 ## If something goes wrong
 | Symptom | Likely cause |

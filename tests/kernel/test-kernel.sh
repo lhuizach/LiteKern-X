@@ -185,9 +185,20 @@ check "binds the drivers (COM1, display, keyboard, touchpad, clock, disks)" \
     '^ata0: no internal disk \(only the one we booted from\)$' \
     '^drivers: 7 registered, 6 devices bound, 1 failed; [0-9]+ PCI devices without a driver$'
 
-check "boots to the desktop (top bar, dock, wallpaper)" \
+# docs/BOOT-BUDGET.md: <= 5 s from stage 1 to the desktop (QEMU here; the
+# EeePC numbers are what count).
+t_desktop=$(grep -m1 '^\[boot\] desktop t=' <<<"$out" | sed 's/.*t=//')
+if [ -n "$t_desktop" ] && [ "$t_desktop" -le 5000 ]; then
+    out+=$'\n'"budget: desktop within 5 s"
+else
+    out+=$'\n'"budget: OVER (${t_desktop:-?} ms)"
+fi
+check "boots to the desktop (top bar, dock, wallpaper) within the 5 s budget" \
+    '^budget: desktop within 5 s$' \
     '^console: 128x48 characters, video BIOS font at 0x[0-9a-f]{5}$' \
-    '^splash: logo$' \n    '^ramdisk: [0-9]+ files, [0-9]+ KB, index read in [0-9]+ ms$' \n    '^wallpaper: crossing, 1024x600, [0-9]+ KB packed, unpacked and checked in [0-9]+ ms$' \
+    '^splash: logo$' \
+    '^ramdisk: [0-9]+ files, [0-9]+ KB, index read in [0-9]+ ms$' \
+    '^wallpaper: crossing, 1024x600, [0-9]+ KB packed, unpacked and checked in [0-9]+ ms$' \
     '^lkx: Files \(apps/files/files\.lkx, [0-9]+ KB\)$' \
     "^screen: corner $DESKTOP$" \
     "^screen: has $WHITE in 0,0,120,30: yes$" \
@@ -403,6 +414,24 @@ check "Files: text files open in a viewer; Esc goes back" \
     '^user: files: view Welcome to LiteKern X\.txt \(184 bytes, [0-9]+ lines\)$' \
     '!PANIC'
 
+# The run-through (Phase 3 section 4): every app opened from the dock and
+# closed with its close button, one after another, then Restart from the
+# power menu. Nothing may crash; every app must exit cleanly.
+run=""
+for i in $(seq 0 $((NAPPS - 1))); do
+    x=$(dock_x "$i" "$NAPPS")
+    run+=" move:$((x - 512)),344 press:1 release sleep:1.5 move:$((1001 - x)),-675 press:1 release sleep:1 move:-489,331"
+done
+run+=" move:486,-369 press:1 release move:-68,42 press:1 release"
+KEYS="$run" KEYS_DONE='^power: restarting' boot_until build/litekernx.img "$done_re" 60
+check "run-through: open and close every app, then restart" \
+    '^lkx: Files exited \(0\)$' \
+    '^lkx: Calculator exited \(0\)$' \
+    '^lkx: Settings exited \(0\)$' \
+    '^desktop: close Log$' \
+    '^power: restarting$' \
+    '!PANIC|crashed|stopped responding'
+
 KEYS="move:486,-369 press:1 release move:-68,42 press:1 release" KEYS_DONE='^power: restarting' \
     boot_until build/litekernx.img "$done_re" 20
 check "shell: the power menu restarts the machine" \
@@ -421,7 +450,8 @@ check "shell: the clock shows the RTC's date and time, and follows it" \
 
 SCREEN="corner=" boot_until build/test-wallpaper-bad/litekernx.img "$done_re" 20
 check "a damaged wallpaper is caught: plain colour instead, no crash" \
-    '^wallpaper: crossing is corrupt ' \n    '^wallpaper: crossing unavailable; plain colour$' \
+    '^wallpaper: crossing is corrupt ' \
+    '^wallpaper: crossing unavailable; plain colour$' \
     "^screen: corner $PLAIN$" \
     '!PANIC'
 
