@@ -3,6 +3,8 @@
   "size": 48,
   "icons": {
     "files": "files.png",
-    "log": "log.png"
+    "log": "log.png",
+    "settings": "settings.png",
+    "calculator": "calculator.png"
   }
 }

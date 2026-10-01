@@ -54,9 +54,24 @@ static inline int k86_header(const struct k86_header *h)
     return k86_call(SYS_WINDOW_HEADER, (uint32_t)h, 0, 0, 0);
 }
 
-static inline int k86_wait_event(struct k86_event *ev)
+/* Sleeps until an event comes. On K86_EVENT_THEME the app's copy of the
+ * theme (kernel/theme.h's theme_get()) is already updated: just redraw. */
+int k86_wait_event(struct k86_event *ev);
+
+/* Appearance (the Settings app). */
+static inline int k86_appearance(struct k86_appearance *out)
 {
-    return k86_call(SYS_WAIT_EVENT, (uint32_t)ev, 0, 0, 0);
+    return k86_call(SYS_APPEARANCE, (uint32_t)out, 0, 0, 0);
+}
+
+static inline int k86_appearance_set(int style, int accent, const char *wallpaper)
+{
+    return k86_call(SYS_APPEARANCE_SET, (uint32_t)style, (uint32_t)accent, (uint32_t)wallpaper, 0);
+}
+
+static inline int k86_wallpaper_thumb(const char *name, uint32_t *out, int w, int h)
+{
+    return k86_call(SYS_WALLPAPER_THUMB, (uint32_t)name, (uint32_t)out, (uint32_t)w, (uint32_t)h);
 }
 
 /* Files. Paths start with '/', inside a volume (index from k86_volumes). */

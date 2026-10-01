@@ -21,6 +21,10 @@ void desktop_start(void);
 /* Redraw the whole desktop (unless a window is open) and present. */
 void desktop_show(void);
 
+/* The theme or wallpaper changed: redraw the top bar (and the desktop, if
+ * it's showing). */
+void desktop_refresh(void);
+
 /* Pointer input, every packet. Returns 1 if the shell took it (the top bar,
  * the power menu, the desktop); 0 means it's the open window's. */
 int desktop_input_mouse(int x, int y, uint8_t buttons);

@@ -40,6 +40,9 @@
 #define MENU_ITEM_H 34
 #define MENU_PAD 6
 #define WHITE 0xffffff
+/* The shell (top bar, its menus, the dock) stays dark in both styles, like GNOME Shell. */
+#define SHELL_FG      0xffffff
+#define SHELL_POPOVER 0x36363a
 
 enum target_kind { T_HOME, T_POWER, T_RESTART, T_SHUTDOWN, T_TILE, T_DOCK, T_APPS };
 
@@ -255,8 +258,7 @@ static void draw_topbar(void)
 
 static void draw_menu(void)
 {
-    const struct theme *t = T();
-    gfx_fill_round_rect(S(), menu_r.x, menu_r.y, menu_r.w, menu_r.h, 12, t->dialog_bg);
+    gfx_fill_round_rect(S(), menu_r.x, menu_r.y, menu_r.w, menu_r.h, 12, SHELL_POPOVER);
     for (int i = 0; i < ntargets; i++)
         if (targets[i].kind == T_RESTART || targets[i].kind == T_SHUTDOWN)
             draw_target(i);
@@ -267,7 +269,6 @@ static void draw_menu(void)
  * item can't be redrawn on its own without redrawing what's under it. */
 static void draw_dock(void)
 {
-    const struct theme *t = T();
     struct gfx_rect d = dock_rect();
     background(d.x, d.y, d.w, d.h);
     gfx_blend_round_rect(S(), d.x, d.y, d.w, d.h, 18, WHITE, A_DOCK);
@@ -283,7 +284,7 @@ static void draw_dock(void)
         if (g->kind == T_APPS)          /* nine dots, like GNOME's "Show Apps" */
             for (int k = 0; k < 9; k++)
                 gfx_fill_circle(S(), r.x + r.w / 2 - 10 + (k % 3) * 10,
-                                r.y + r.h / 2 - 10 + (k / 3) * 10, 3, t->fg);
+                                r.y + r.h / 2 - 10 + (k / 3) * 10, 3, SHELL_FG);
         else
             draw_icon(&builtin_apps[g->app], r.x + (r.w - DOCK_ICON) / 2, r.y + (r.h - DOCK_ICON) / 2);
     }
@@ -333,19 +334,19 @@ static void draw_target(int i)
         gfx_fill_rect(S(), r.x, r.y, r.w, r.h, t->topbar_bg);
         gfx_fill_round_rect(S(), r.x, r.y, r.w, r.h, r.h / 2, bg);
         if (g->kind == T_HOME)
-            draw_home_icon(S(), r.x + r.w / 2, r.y + r.h / 2, t->fg);
+            draw_home_icon(S(), r.x + r.w / 2, r.y + r.h / 2, SHELL_FG);
         else
-            draw_power_icon(S(), r.x + r.w / 2, r.y + r.h / 2, t->fg, bg);
+            draw_power_icon(S(), r.x + r.w / 2, r.y + r.h / 2, SHELL_FG, bg);
         break;
     }
     case T_RESTART:
     case T_SHUTDOWN: {
         int disabled = g->kind == T_SHUTDOWN;       /* needs ACPI (Phase 5) */
-        uint32_t bg = disabled ? t->dialog_bg : target_bg(i, t->dialog_bg);
-        gfx_fill_rect(S(), r.x, r.y, r.w, r.h, t->dialog_bg);
+        uint32_t bg = disabled ? SHELL_POPOVER : target_bg(i, SHELL_POPOVER);
+        gfx_fill_rect(S(), r.x, r.y, r.w, r.h, SHELL_POPOVER);
         gfx_fill_round_rect(S(), r.x, r.y, r.w, r.h, 6, bg);
         text_draw(S(), r.x + 12, r.y + (r.h - text_height(TEXT_BODY)) / 2, disabled ? "Shut Down" : "Restart", TEXT_BODY,
-                  disabled ? gfx_mix(t->fg, t->dialog_bg, 110) : t->fg);
+                  disabled ? gfx_mix(SHELL_FG, SHELL_POPOVER, 110) : SHELL_FG);
         break;
     }
     case T_TILE: {
@@ -449,6 +450,19 @@ void desktop_start(void)
         desktop_show();
     }
     kprintf("desktop: ready\n");     /* everything is up: the tests wait for this */
+}
+
+void desktop_refresh(void)
+{
+    if (!started)
+        return;
+    if (desktop_visible()) {
+        desktop_show();
+        return;
+    }
+    build_targets();
+    draw_topbar();
+    screen_present();
 }
 
 static void launch(const struct app *a)
@@ -629,6 +643,7 @@ static void log_event(const struct wm_event *ev)
         kprintf("wm: key 0x%03x\n", ev->key.key);
         break;
     case WM_EVENT_CLOSE:
+    case WM_EVENT_THEME:
     case WM_EVENT_POINTER:      /* too many to log; clicks already are */
         break;
     }

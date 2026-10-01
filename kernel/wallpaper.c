@@ -115,6 +115,12 @@ int wallpaper_set(const char *name)
     uint32_t raw, raw_bytes, t0 = uptime_ms();
     if (!image.px)
         return -ENODEV;
+    if (!name[0]) {             /* none: the theme's plain colour */
+        shown = 0;
+        current[0] = '\0';
+        kprintf("wallpaper: none (plain colour)\n");
+        return 0;
+    }
     /* The light style uses "<name>-light" where there is one. */
     char variant[40];
     int n = 0;

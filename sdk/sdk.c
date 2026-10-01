@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include "kernel/font.h"
 #include "kernel/string.h"
+#include "kernel/theme.h"
 #include "sdk/kern86.h"
 
 static uint8_t glyphs[K86_FONT_BYTES];
@@ -25,11 +26,28 @@ const uint8_t *font_glyph(uint8_t c)
     return &glyphs[c * FONT_H];
 }
 
+static void fetch_theme(void)
+{
+    static struct theme t;
+    if (k86_call(SYS_THEME_GET, (uint32_t)&t, 0, 0, 0) == 0)
+        theme_load(&t);
+}
+
 int k86_window_open(struct k86_window *w)
 {
     int err = k86_call(SYS_WINDOW_OPEN, (uint32_t)w, 0, 0, 0);
-    if (!err)
+    if (!err) {
         font_init(0);
+        fetch_theme();
+    }
+    return err;
+}
+
+int k86_wait_event(struct k86_event *ev)
+{
+    int err = k86_call(SYS_WAIT_EVENT, (uint32_t)ev, 0, 0, 0);
+    if (!err && ev->type == K86_EVENT_THEME)
+        fetch_theme();
     return err;
 }
 

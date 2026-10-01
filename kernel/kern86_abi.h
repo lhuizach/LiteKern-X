@@ -29,6 +29,12 @@
 #define SYS_FS_CREATE       10  /* ebx: volume, ecx: folder path, edx: name, esi: 1 = folder */
 #define SYS_FS_RENAME       11  /* ebx: volume, ecx: folder path, edx: old name, esi: new name */
 #define SYS_FS_DELETE       12  /* ebx: volume, ecx: folder path, edx: name (folders: all of it) */
+#define SYS_THEME_GET       13  /* ebx: struct theme * out (kernel/theme.h): the current colours */
+#define SYS_APPEARANCE      14  /* ebx: struct k86_appearance * out: settings and choices */
+#define SYS_APPEARANCE_SET  15  /* ebx: style (0 dark, 1 light, -1 keep), ecx: accent (-1 keep),
+                                 * edx: wallpaper name (NULL keep, "" none). Every app window
+                                 * gets K86_EVENT_THEME */
+#define SYS_WALLPAPER_THUMB 16  /* ebx: name, ecx: uint32_t * out, edx: w, esi: h (<= 256 x 160) */
 
 /* --- memory -------------------------------------------------------------------- */
 #define K86_APP_BASE        0x80000000u     /* where an app's image is loaded */
@@ -73,6 +79,8 @@ struct k86_header {
 #define K86_EVENT_HEADER    2   /* id: a header button */
 #define K86_EVENT_CLOSE     3   /* close now: the next SYS_WAIT_EVENT ends the app */
 #define K86_EVENT_POINTER   4   /* x, y in the canvas, buttons held, changed */
+#define K86_EVENT_THEME     5   /* the style or accent changed: redraw (the SDK has already
+                                 * fetched the new theme) */
 
 struct k86_event {
     int32_t type;
@@ -88,6 +96,21 @@ struct k86_volume {
     int32_t supported, read_only;
     char why_not[24];
     uint32_t free_kib;
+};
+
+#define K86_MAX_ACCENTS 8
+#define K86_MAX_WALLPAPERS 8
+struct k86_appearance {
+    int32_t style;          /* 0 dark, 1 light */
+    int32_t accent;
+    char wallpaper[32];     /* "" for the plain colour */
+    int32_t naccents;
+    struct {
+        char name[12];
+        uint32_t colour;
+    } accents[K86_MAX_ACCENTS];
+    int32_t nwallpapers;
+    char wallpapers[K86_MAX_WALLPAPERS][32];
 };
 
 struct k86_dirent {

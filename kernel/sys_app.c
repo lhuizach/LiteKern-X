@@ -1,5 +1,6 @@
 #include "kernel/sys_app.h"
 #include "kernel/errno.h"
+#include "kernel/desktop.h"
 #include "kernel/fat32.h"
 #include "kernel/font.h"
 #include "kernel/idle.h"
@@ -7,7 +8,9 @@
 #include "kernel/printk.h"
 #include "kernel/storage.h"
 #include "kernel/string.h"
+#include "kernel/theme.h"
 #include "kernel/user.h"
+#include "kernel/wallpaper.h"
 #include "kernel/wm.h"
 
 static int canvas_w, canvas_h;      /* 0 until SYS_WINDOW_OPEN */
@@ -244,6 +247,70 @@ static int fs_change(uint32_t nr, uint32_t vol, uint32_t upath, uint32_t uname, 
     return fat_rename(v, &e, other);
 }
 
+/* --- appearance (the Settings app) ------------------------------------------- */
+
+static int theme_out(uint32_t out)
+{
+    if (user_check(out, sizeof(struct theme), 1))
+        return -EFAULT;
+    *(struct theme *)out = *theme_get();
+    return 0;
+}
+
+static int appearance(uint32_t out)
+{
+    if (user_check(out, sizeof(struct k86_appearance), 1))
+        return -EFAULT;
+    struct k86_appearance *a = (struct k86_appearance *)out;
+    memset(a, 0, sizeof(*a));
+    a->style = theme_is_light();
+    a->accent = theme_accent_index();
+    const char *cur = wallpaper_current();
+    for (int i = 0; cur[i] && i < 31; i++)
+        a->wallpaper[i] = cur[i];
+    uint32_t colour;
+    const char *name;
+    for (int i = 0; i < K86_MAX_ACCENTS && (name = theme_accent(i, &colour)); i++) {
+        for (int k = 0; name[k] && k < 11; k++)
+            a->accents[i].name[k] = name[k];
+        a->accents[i].colour = colour;
+        a->naccents++;
+    }
+    a->nwallpapers = wallpaper_list(a->wallpapers, K86_MAX_WALLPAPERS);
+    return 0;
+}
+
+static int appearance_set(int style, int accent, uint32_t uname)
+{
+    char name[32];
+    int err = 0;
+    if (uname && (err = user_string(name, uname, sizeof(name))))
+        return err;
+    int old_light = theme_is_light();
+    theme_set(style, accent);
+    if (uname)
+        err = wallpaper_set(name);
+    else if (theme_is_light() != old_light)
+        wallpaper_refresh();                /* its light or dark variant */
+    kprintf("appearance: %s, accent %s, wallpaper %s\n", theme_is_light() ? "light" : "dark",
+            theme_accent(theme_accent_index(), 0),
+            wallpaper_current()[0] ? wallpaper_current() : "none");
+    desktop_refresh();
+    wm_theme_changed();
+    return err;
+}
+
+static int wallpaper_thumbnail(uint32_t uname, uint32_t out, int w, int h)
+{
+    char name[32];
+    if (w <= 0 || h <= 0 || w > 256 || h > 160)
+        return -EINVAL;
+    if (user_check(out, (uint32_t)(w * h * 4), 1))
+        return -EFAULT;
+    int err = user_string(name, uname, sizeof(name));
+    return err ? err : wallpaper_thumb(name, (uint32_t *)out, w, h);
+}
+
 int sys_app(uint32_t nr, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
 {
     (void)a5;
@@ -258,6 +325,10 @@ int sys_app(uint32_t nr, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uin
     case SYS_FS_CREATE:
     case SYS_FS_RENAME:
     case SYS_FS_DELETE:      return fs_change(nr, a1, a2, a3, a4);
+    case SYS_THEME_GET:      return theme_out(a1);
+    case SYS_APPEARANCE:     return appearance(a1);
+    case SYS_APPEARANCE_SET: return appearance_set((int)a1, (int)a2, a3);
+    case SYS_WALLPAPER_THUMB: return wallpaper_thumbnail(a1, a2, (int)a3, (int)a4);
     default:                 return -ENOSYS;
     }
 }

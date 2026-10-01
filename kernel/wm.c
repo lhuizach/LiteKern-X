@@ -247,6 +247,15 @@ void wm_present(void)
     screen_present();
 }
 
+void wm_theme_changed(void)
+{
+    if (!open)
+        return;
+    draw_header();
+    screen_present();
+    push((struct wm_event){ .type = WM_EVENT_THEME });
+}
+
 void wm_request_close(void)
 {
     if (open)

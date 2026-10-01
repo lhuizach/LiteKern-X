@@ -35,6 +35,7 @@ enum wm_event_type {
     WM_EVENT_POINTER,       /* x, y (content coordinates; y < 0 over the header bar),
                              * buttons held, changed: the pointer moved or a button
                              * changed. Moves are merged while nothing changes. */
+    WM_EVENT_THEME,         /* the style or accent changed: redraw */
 };
 
 struct wm_event {
@@ -69,6 +70,8 @@ void wm_present(void);
 int wm_poll_event(struct wm_event *ev);
 /* Queue a close request, as if the close button had been pressed (Home). */
 void wm_request_close(void);
+/* The theme changed: redraw the header bar and tell the app. */
+void wm_theme_changed(void);
 
 /* From the input loop. Coordinates are the screen's. */
 void wm_input_key(const struct key_event *key);

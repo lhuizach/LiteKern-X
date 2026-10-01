@@ -3,8 +3,8 @@
 
 Usage: python3 tools/icon-placeholders.py [OUT_DIR]   (default assets/icons)
 
-Stand-ins until real icons are made (docs/ASSET-PROMPTS.md §2): a blue
-folder for Files and a terminal for Log. Shapes are sampled 4x4 per pixel
+Stand-ins until real icons are made (docs/ASSET-PROMPTS.md §4): a blue
+folder for Files, a terminal for Log, a gear for Settings and a calculator. Shapes are sampled 4x4 per pixel
 for smooth edges. Only needs the standard library.
 """
 import os
@@ -85,10 +85,53 @@ def terminal():
     ])
 
 
+def circle(cx, cy, r):
+    return lambda x, y: (x - cx) ** 2 + (y - cy) ** 2 <= r * r
+
+
+def gear_shape(cx, cy, r_in, r_out, teeth):
+    import math
+
+    def inside(x, y):
+        dx, dy = x - cx, y - cy
+        d = math.hypot(dx, dy)
+        if d <= r_in:
+            return True
+        if d > r_out:
+            return False
+        a = (math.atan2(dy, dx) / (2 * math.pi) * teeth) % 1.0
+        return 0.25 <= a <= 0.75            # a tooth half the pitch wide
+    return inside
+
+
+def gear():
+    return render([
+        (gear_shape(24, 24, 15.5, 20.5, 8), 0x77767b),  # body and teeth
+        (circle(24, 24, 13), 0x9a9996),                 # face
+        (circle(24, 24, 6.5), 0x5e5c64),                # hub
+        (circle(24, 24, 3.5), 0x3d3846),                # hole
+    ])
+
+
+def calculator():
+    layers = [
+        (round_rect(8, 4, 40, 45, 5), 0x9a9996),        # body (shadow edge)
+        (round_rect(8, 4, 40, 43, 5), 0xdeddda),        # body
+        (round_rect(12, 8, 36, 17, 2), 0x241f31),       # display
+    ]
+    for row in range(3):
+        for col in range(3):
+            x0, y0 = 12 + col * 8.5, 21 + row * 7.5
+            colour = 0xff7800 if (row, col) == (2, 2) else 0x77767b
+            layers.append((round_rect(x0, y0, x0 + 6.5, y0 + 5.5, 1.2), colour))
+    return render(layers)
+
+
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else "assets/icons"
     os.makedirs(out, exist_ok=True)
-    for name, rows in (("files", folder()), ("log", terminal())):
+    for name, rows in (("files", folder()), ("log", terminal()), ("settings", gear()),
+                       ("calculator", calculator())):
         write_rgba(os.path.join(out, name + ".png"), SIZE, SIZE, rows)
         print(f"icon-placeholders: {out}/{name}.png")
 
