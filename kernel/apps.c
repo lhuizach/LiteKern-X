@@ -42,7 +42,8 @@ void log_key(const struct key_event *ev)
 
 static void log_open(void)
 {
-    console_set_colours(LOG_FG, theme_get()->view_bg);
+    const struct theme *t = theme_get();
+    console_set_colours(t->light ? t->fg : LOG_FG, t->view_bg);
     console_set_area(theme_get()->topbar_h + theme_get()->headerbar_h);
     console_set_visible(1);
 }

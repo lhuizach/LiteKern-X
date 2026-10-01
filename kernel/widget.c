@@ -108,11 +108,11 @@ void wg_button_draw(struct gfx_surface *s, struct wg_button *b)
         break;
     }
     case WG_BUTTON_FLAT:
-        bg = pressed ? gfx_mix(WHITE, under, A_BUTTON_ACTIVE)
-           : hover ? gfx_mix(WHITE, under, A_BUTTON) : under;
+        bg = pressed ? gfx_mix(t->ink, under, A_BUTTON_ACTIVE)
+           : hover ? gfx_mix(t->ink, under, A_BUTTON) : under;
         break;
     default:
-        bg = gfx_mix(WHITE, under, pressed ? A_BUTTON_ACTIVE : hover ? A_BUTTON_HOVER : A_BUTTON);
+        bg = gfx_mix(t->ink, under, pressed ? A_BUTTON_ACTIVE : hover ? A_BUTTON_HOVER : A_BUTTON);
         break;
     }
     if (b->disabled) {          /* Adwaita: the whole button at 50% opacity */
@@ -233,7 +233,9 @@ void wg_list_draw(struct gfx_surface *s, struct wg_list *l)
 {
     const struct theme *t = T();
     uint32_t under = under_or_window(l->under);
-    uint32_t card = gfx_mix(WHITE, under, A_CARD);
+    /* Adwaita's card: white 8% over the window in the dark style; the view
+     * colour (white) in the light one. */
+    uint32_t card = t->light ? t->view_bg : gfx_mix(WHITE, under, A_CARD);
     int shown = wg_list_rows_shown(l), card_h = shown * t->row_h;
     struct gfx_surface c = gfx_sub(s, (struct gfx_rect){ l->r.x, l->r.y, l->r.w, card_h });
     int scrollbar = l->count > shown;
@@ -248,9 +250,9 @@ void wg_list_draw(struct gfx_surface *s, struct wg_list *l)
         if (i == l->selected)
             gfx_fill_rect(&c, 0, y, c.w, t->row_h, gfx_mix(t->accent_bg, card, A_SELECTED));
         else if (i == l->hover)
-            gfx_fill_rect(&c, 0, y, c.w, t->row_h, gfx_mix(WHITE, card, A_ROW_HOVER));
+            gfx_fill_rect(&c, 0, y, c.w, t->row_h, gfx_mix(t->ink, card, A_ROW_HOVER));
         if (k)
-            gfx_fill_rect(&c, 0, y, c.w, 1, gfx_mix(0, card, A_SEPARATOR));
+            gfx_fill_rect(&c, 0, y, c.w, 1, gfx_mix(0, card, t->light ? 24 : A_SEPARATOR));
         int x = 14;
         if (row.icon != WG_ICON_NONE) {
             draw_row_icon(&c, row.icon, x, cy);
@@ -267,7 +269,7 @@ void wg_list_draw(struct gfx_surface *s, struct wg_list *l)
         if (thumb < 16)
             thumb = 16;
         int y = 4 + (track - thumb) * l->top / max_top(l);
-        gfx_fill_round_rect(&c, c.w - 8, y, 4, thumb, 2, gfx_mix(WHITE, card, 110));
+        gfx_fill_round_rect(&c, c.w - 8, y, 4, thumb, 2, gfx_mix(t->ink, card, 110));
     }
     gfx_round_corners(s, l->r.x, l->r.y, l->r.w, card_h, 12, under);
     l->dirty = 0;
@@ -372,7 +374,7 @@ void wg_entry_draw(struct gfx_surface *s, struct wg_entry *e)
 {
     const struct theme *t = T();
     uint32_t under = under_or_window(e->under);
-    uint32_t bg = gfx_mix(WHITE, under, A_BUTTON);
+    uint32_t bg = gfx_mix(t->ink, under, A_BUTTON);
     gfx_fill_rect(s, e->r.x, e->r.y, e->r.w, e->r.h, under);
     if (e->focused) {           /* Adwaita's focus ring: accent at 50%, 2 px */
         gfx_fill_round_rect(s, e->r.x, e->r.y, e->r.w, e->r.h, t->radius + 2,

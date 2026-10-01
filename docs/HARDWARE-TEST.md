@@ -71,7 +71,7 @@ Boot the normal image again. Pass means:
 If you instead see `vbe: WARNING: could not patch ...`, the shadow RAM stayed locked: photograph the log. If the screen stays black, write `litekernx-vbios-diag.img` again and photograph the `diag:` lines, which now show the patched record too.
 
 ### E. Phase 2 GUI and storage (`litekernx.img`, 2026-09-30 and later)
-The image is now **65 MiB**: it carries a 64 MiB FAT32 partition for files. Write the whole file, as before. Afterwards Windows should show the stick as a drive called **LITEKERNX**, holding `Welcome to LiteKern X.txt`, `README.TXT`, `Documents` and `Pictures`.
+The image is now **68 MiB**: after the kernel comes the ramdisk (apps, wallpapers; read at boot through the BIOS), then a 64 MiB FAT32 partition for files at 4 MiB. Write the whole file, as before. Afterwards Windows should show the stick as a drive called **LITEKERNX**, holding `Welcome to LiteKern X.txt`, `README.TXT`, `Documents` and `Pictures`.
 
 Boot it, then check:
 | What | Pass |

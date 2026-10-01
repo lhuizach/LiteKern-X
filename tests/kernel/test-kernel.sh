@@ -34,11 +34,11 @@ make -s BUILD=build/test-wm EXTRA_CFLAGS=-DLKX_SELFTEST_WM EXTRA_KERNEL_SRCS=tes
     build/test-wm/litekernx.img >/dev/null || exit 1
 # A kernel whose packed wallpaper has one byte damaged: it must notice (the
 # checksum, or inflate's own checks) and fall back to the plain colour.
-rm -f build/test-wallpaper-bad/gen/wallpaper.lkxw     # fresh each run: flipping twice undoes it
-make -s BUILD=build/test-wallpaper-bad build/test-wallpaper-bad/gen/wallpaper.lkxw >/dev/null || exit 1
+rm -f build/test-wallpaper-bad/gen/wallpapers/crossing.lkxw     # fresh each run: flipping twice undoes it
+make -s BUILD=build/test-wallpaper-bad build/test-wallpaper-bad/gen/wallpapers/crossing.lkxw >/dev/null || exit 1
 python3 -c "
 import sys; p = sys.argv[1]; d = bytearray(open(p, 'rb').read())
-d[len(d) // 2] ^= 0x5a; open(p, 'wb').write(bytes(d))" build/test-wallpaper-bad/gen/wallpaper.lkxw
+d[len(d) // 2] ^= 0x5a; open(p, 'wb').write(bytes(d))" build/test-wallpaper-bad/gen/wallpapers/crossing.lkxw
 make -s BUILD=build/test-wallpaper-bad build/test-wallpaper-bad/litekernx.img >/dev/null || exit 1
 make -s BUILD=build/test-disk EXTRA_CFLAGS=-DLKX_SELFTEST_DISK \
     EXTRA_KERNEL_SRCS=tests/kernel/selftest_disk.c build/test-disk/litekernx.img >/dev/null || exit 1
@@ -55,7 +55,7 @@ mkdir -p build/test-boot
 python3 tests/boot/make-fake-intel-vbios.py /usr/share/seabios/vgabios-stdvga.bin \
     build/test-boot/fake-intel-vgabios.bin >/dev/null || exit 1
 cp build/diag-vbios/litekernx.img build/test-boot/diag-1m.img
-truncate -s 1M build/test-boot/diag-1m.img
+truncate -s %1M build/test-boot/diag-1m.img
 
 # boot_until IMAGE REGEX SECONDS [EXTRA QEMU ARGS] -> $out holds the serial output
 # Once REGEX matches:
@@ -99,7 +99,7 @@ boot_until() {
 NAVY=1e3a5f TEXT=c8d0dc RED=801010 WHITE=ffffff
 # The desktop's bottom-right corner: the wallpaper's bottom edge colour (the
 # 1024x600 image is centred on QEMU's 1024x768 screen). PLAIN: no wallpaper.
-DESKTOP=$(sed -n 's/^bottom=//p' build/gen/wallpaper.lkxw.txt) PLAIN=202634
+DESKTOP=$(sed -n 's/^bottom=//p' build/gen/wallpapers/crossing.lkxw.txt) PLAIN=202634
 
 # check NAME: all remaining args are regexes that must each match a line;
 # a regex prefixed with ! must match no line.
@@ -124,7 +124,7 @@ check() {
 
 # Last line of a full boot / of the driver self-test / of a panic. Anchored to
 # the end of the line so a half-written line doesn't count.
-done_re='^mouse: \(512, 384\) buttons ---.?$|^PANIC: .*\).?$'
+done_re='^desktop: ready.?$|^PANIC: .*\).?$'
 selftest_done_re='^selftest: drivers [0-9]+/[0-9]+ passed.?$|^PANIC: .*\).?$'
 user_done_re='^selftest: user [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$'
 panic_re='^PANIC: .*[0-9a-f)].?$'
@@ -176,7 +176,7 @@ check "binds the drivers (COM1, display, keyboard, touchpad, clock, disks)" \
 
 check "boots to the desktop (top bar, dock, wallpaper)" \
     '^console: 128x48 characters, video BIOS font at 0x[0-9a-f]{5}$' \
-    '^wallpaper: 1024x600, [0-9]+ KB packed, unpacked and checked in [0-9]+ ms$' \
+    '^ramdisk: [0-9]+ files, [0-9]+ KB, read in [0-9]+ ms$' \n    '^wallpaper: crossing, 1024x600, [0-9]+ KB packed, unpacked and checked in [0-9]+ ms$' \
     '^lkx: Files \(apps/files/files\.lkx, [0-9]+ KB\)$' \
     "^screen: corner $DESKTOP$" \
     "^screen: has $WHITE in 0,0,120,30: yes$" \
@@ -256,7 +256,7 @@ check "window system: header bar, buttons, events (+ Adwaita dark window on scre
     '!selftest: FAIL|PANIC'
 
 KEYS="move:489,-331 press:1 release" KEYS_DONE='^wm: close' SCREEN="corner=" \
-    boot_until build/test-wm/litekernx.img '^mouse: \(512, 384\) buttons ---.?$' 20
+    boot_until build/test-wm/litekernx.img "$done_re" 20
 check "window system: clicking the close button closes the window, the desktop comes back" \
     '^wm: close$' \
     "^screen: corner $DESKTOP$" \
@@ -302,11 +302,11 @@ mkdir -p build/test-files
 cp build/litekernx.img build/test-files/disk.img
 KEYS="move:-60,344 press:1 release ctrl-n h i ret f2 backspace backspace b y e ret ctrl-n b y e ret esc home ret ctrl-n n e w dot t x t ret backspace home down down delete ret" \
 KEYS_DONE='^user: files: delete bye' boot_until build/test-files/disk.img "$done_re" 40
-dd if=build/test-files/disk.img of=build/test-files/fat.img bs=512 skip=2048 status=none
+dd if=build/test-files/disk.img of=build/test-files/fat.img bs=512 skip=8192 status=none
 out+=$'\n'$(fsck.fat -n build/test-files/fat.img >/dev/null 2>&1 && echo "fsck: clean" || echo "fsck: ERRORS")
 out+=$'\n'$(MTOOLS_SKIP_CHECK=1 mdir -/ -b -i build/test-files/fat.img ::/ 2>/dev/null | sed 's/^/mtools: /')
 check "Files: create, rename, delete and folders on the FAT32 partition (checked by fsck.fat)" \
-    '^storage: boot0 partition at 2048 \(FAT32\): FAT32, read/write$' \
+    '^storage: boot0 partition at 8192 \(FAT32\): FAT32, read/write$' \
     '^user: files: open Boot disk \(LITEKERNX\)$' \
     '^user: files: create hi$' \
     '^user: files: rename hi -> bye$' \
@@ -365,7 +365,7 @@ check "shell: the clock shows the RTC's date and time, and follows it" \
 
 SCREEN="corner=" boot_until build/test-wallpaper-bad/litekernx.img "$done_re" 20
 check "a damaged wallpaper is caught: plain colour instead, no crash" \
-    '^wallpaper: corrupt ' \
+    '^wallpaper: crossing is corrupt ' \n    '^wallpaper: crossing unavailable; plain colour$' \
     "^screen: corner $PLAIN$" \
     '!PANIC'
 

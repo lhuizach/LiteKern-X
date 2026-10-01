@@ -23,6 +23,8 @@
 #include "kernel/screen.h"
 #include "kernel/theme.h"
 #include "kernel/wallpaper.h"
+#include "kernel/ramdisk.h"
+#include "defaults.h"
 #include "kernel/wm.h"
 
 #define GRID_TOP 48         /* gap between the top bar and the grid */
@@ -426,6 +428,9 @@ void desktop_show(void)
 
 void desktop_start(void)
 {
+    /* The build-time defaults (make STYLE=... ACCENT=... WALLPAPER=...). */
+    theme_set(theme_find_style(DEFAULT_STYLE), theme_find_accent(DEFAULT_ACCENT));
+    ramdisk_init();             /* apps and wallpapers, from the boot disk */
     apps_init();
     rtc = device_find("rtc0");
     if (rtc && rtc->state != DEVICE_BOUND)
@@ -436,7 +441,7 @@ void desktop_start(void)
     }
     if (!screen_ready())
         return;
-    wallpaper_init();
+    wallpaper_init(DEFAULT_WALLPAPER);
     started = 1;
     if (wm_is_open()) {         /* a self-test left a window open: just the top bar */
         build_targets();
@@ -445,6 +450,7 @@ void desktop_start(void)
     } else {
         desktop_show();
     }
+    kprintf("desktop: ready\n");     /* everything is up: the tests wait for this */
 }
 
 static void launch(const struct app *a)
