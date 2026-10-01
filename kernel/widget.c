@@ -1,5 +1,5 @@
 #include "kernel/widget.h"
-#include "kernel/font.h"
+#include "kernel/text.h"
 #include "kernel/theme.h"
 
 /* Adwaita's translucent colours, as alpha out of 255 over what's beneath. */
@@ -58,39 +58,42 @@ static uint32_t text_colour(enum wg_text style)
     }
 }
 
-void wg_label(struct gfx_surface *s, int x, int y, const char *text, enum wg_text style)
+static enum text_style text_style_of(enum wg_text style)
 {
-    uint32_t c = text_colour(style);
-    gfx_text(s, x, y, text, c, GFX_TRANSPARENT);
-    if (style == WG_TEXT_TITLE)         /* faux bold, like the header bar title */
-        gfx_text(s, x + 1, y, text, c, GFX_TRANSPARENT);
+    return style == WG_TEXT_TITLE ? TEXT_BOLD : style == WG_TEXT_HEADING ? TEXT_HEADING
+         : style == WG_TEXT_SMALL ? TEXT_SMALL : TEXT_BODY;
+}
+
+int wg_label(struct gfx_surface *s, int x, int y, const char *text, enum wg_text style)
+{
+    return text_draw(s, x, y, text, text_style_of(style), text_colour(style));
 }
 
 void wg_label_centred(struct gfx_surface *s, int cx, int y, const char *text, enum wg_text style)
 {
-    wg_label(s, cx - gfx_text_width(text) / 2, y, text, style);
+    wg_label(s, cx - text_width(text, text_style_of(style)) / 2, y, text, style);
+}
+
+int wg_label_width(const char *text, enum wg_text style)
+{
+    return text_width(text, text_style_of(style));
+}
+
+int wg_label_height(enum wg_text style)
+{
+    return text_height(text_style_of(style));
 }
 
 int wg_text_fit(struct gfx_surface *s, int x, int y, const char *text, int max_w, uint32_t colour)
 {
-    int n = length(text), fit = max_w / FONT_W;
-    if (n <= fit)
-        return gfx_text(s, x, y, text, colour, GFX_TRANSPARENT);
-    if (fit < 3)
-        return 0;
-    int w = 0;
-    for (int i = 0; i < fit - 3; i++, w += FONT_W)
-        gfx_char(s, x + w, y, text[i], colour, GFX_TRANSPARENT);
-    for (int i = 0; i < 3; i++, w += FONT_W)
-        gfx_char(s, x + w, y, '.', colour, GFX_TRANSPARENT);
-    return w;
+    return text_draw_fit(s, x, y, text, max_w, TEXT_BODY, colour);
 }
 
 /* --- button ------------------------------------------------------------------ */
 
 int wg_button_width(const char *label)
 {
-    return gfx_text_width(label) + 2 * 17;
+    return text_width(label, TEXT_BOLD) + 2 * 17;
 }
 
 void wg_button_draw(struct gfx_surface *s, struct wg_button *b)
@@ -121,9 +124,9 @@ void wg_button_draw(struct gfx_surface *s, struct wg_button *b)
     }
     gfx_fill_rect(s, b->r.x, b->r.y, b->r.w, b->r.h, under);
     gfx_fill_round_rect(s, b->r.x, b->r.y, b->r.w, b->r.h, t->radius, bg);
-    int x = b->r.x + (b->r.w - gfx_text_width(b->label)) / 2, y = b->r.y + (b->r.h - FONT_H) / 2;
-    gfx_text(s, x, y, b->label, fg, GFX_TRANSPARENT);
-    gfx_text(s, x + 1, y, b->label, fg, GFX_TRANSPARENT);      /* buttons are bold */
+    int x = b->r.x + (b->r.w - text_width(b->label, TEXT_BOLD)) / 2;
+    int y = b->r.y + (b->r.h - text_height(TEXT_BOLD)) / 2;
+    text_draw(s, x, y, b->label, TEXT_BOLD, fg);              /* buttons are bold */
     b->dirty = 0;
 }
 
@@ -258,11 +261,11 @@ void wg_list_draw(struct gfx_surface *s, struct wg_list *l)
             draw_row_icon(&c, row.icon, x, cy);
             x += 32;
         }
-        int dw = row.detail ? gfx_text_width(row.detail) : 0;
+        int dw = row.detail ? text_width(row.detail, TEXT_BODY) : 0, ty = cy - text_height(TEXT_BODY) / 2;
         if (row.detail)
-            gfx_text(&c, text_right - dw, cy - FONT_H / 2, row.detail, t->fg_dim, GFX_TRANSPARENT);
-        wg_text_fit(&c, x, cy - FONT_H / 2, row.name ? row.name : "",
-                    text_right - x - (dw ? dw + 16 : 0), t->fg);
+            text_draw(&c, text_right - dw, ty, row.detail, TEXT_BODY, t->fg_dim);
+        text_draw_fit(&c, x, ty, row.name ? row.name : "", text_right - x - (dw ? dw + 16 : 0),
+                      TEXT_BODY, t->fg);
     }
     if (scrollbar) {            /* a thin overlay scrollbar, like GTK's */
         int track = card_h - 8, thumb = track * shown / l->count;
@@ -341,19 +344,15 @@ enum wg_list_result wg_list_key(struct wg_list *l, const struct key_event *k)
 
 /* --- entry ------------------------------------------------------------------ */
 
-static int entry_chars(const struct wg_entry *e)
-{
-    int n = (e->r.w - 20) / FONT_W;
-    return n < 1 ? 1 : n;
-}
-
+/* Keep the cursor in view: scroll is the first character shown. */
 static void entry_follow_cursor(struct wg_entry *e)
 {
-    int shown = entry_chars(e);
+    int room = e->r.w - 22;
     if (e->cursor < e->scroll)
         e->scroll = e->cursor;
-    else if (e->cursor > e->scroll + shown)
-        e->scroll = e->cursor - shown;
+    while (e->scroll < e->cursor &&
+           text_width_n(e->text + e->scroll, e->cursor - e->scroll, TEXT_BODY) > room)
+        e->scroll++;
     if (e->scroll < 0)
         e->scroll = 0;
 }
@@ -384,12 +383,13 @@ void wg_entry_draw(struct gfx_surface *s, struct wg_entry *e)
         gfx_fill_round_rect(s, e->r.x, e->r.y, e->r.w, e->r.h, t->radius, bg);
     }
     struct gfx_surface in = gfx_sub(s, (struct gfx_rect){ e->r.x + 10, e->r.y, e->r.w - 20, e->r.h });
-    int y = (e->r.h - FONT_H) / 2;
+    int h = text_height(TEXT_BODY), y = (e->r.h - h) / 2;
     uint32_t fg = e->disabled ? t->fg_dim : t->fg;
-    for (int i = e->scroll, x = 0; i < e->len && x < in.w; i++, x += FONT_W)
-        gfx_char(&in, x, y, e->text[i], fg, GFX_TRANSPARENT);
-    if (e->focused)             /* the text cursor (steady: there's no timer to blink it) */
-        gfx_fill_rect(&in, (e->cursor - e->scroll) * FONT_W, y - 1, 1, FONT_H + 2, t->fg);
+    text_draw(&in, 0, y, e->text + e->scroll, TEXT_BODY, fg);
+    if (e->focused) {           /* the text cursor (steady: there's no timer to blink it) */
+        int cx = text_width_n(e->text + e->scroll, e->cursor - e->scroll, TEXT_BODY);
+        gfx_fill_rect(&in, cx, y, 1, h, t->fg);
+    }
     e->dirty = 0;
 }
 
@@ -436,7 +436,7 @@ enum wg_entry_result wg_entry_pointer(struct wg_entry *e, const struct wg_pointe
 {
     if (!p->down || e->disabled || !inside(e->r, p->x, p->y))
         return WG_ENTRY_NONE;
-    int c = e->scroll + (p->x - e->r.x - 10 + FONT_W / 2) / FONT_W;
+    int c = e->scroll + text_index_at(e->text + e->scroll, TEXT_BODY, p->x - e->r.x - 10);
     e->cursor = c < 0 ? 0 : c > e->len ? e->len : c;
     e->focused = 1;
     e->dirty = 1;
@@ -447,21 +447,27 @@ enum wg_entry_result wg_entry_pointer(struct wg_entry *e, const struct wg_pointe
 
 #define DLG_PAD 24
 #define DLG_W   420
-#define DLG_LINE (FONT_H + 4)
+#define DLG_LINE (text_height(TEXT_BODY) + 2)
 
-/* Word-wrap the body: calls out(line, len) per line, returns the line count. */
-static int wrap(const char *text, int max_chars,
+/* Word-wrap the body to max_w pixels: calls out(line, len) per line,
+ * returns the line count. */
+static int wrap(const char *text, int max_w,
                 void (*out)(void *, const char *, int, int), void *ctx)
 {
     int lines = 0;
     while (text && *text) {
         int n = length(text), cut = n;
-        if (n > max_chars) {
-            cut = max_chars;
-            while (cut > 0 && text[cut] != ' ')
-                cut--;
+        if (text_width(text, TEXT_BODY) > max_w) {
+            cut = 0;
+            while (cut < n && text_width_n(text, cut + 1, TEXT_BODY) <= max_w)
+                cut++;
+            int word = cut;
+            while (word > 0 && text[word] != ' ')
+                word--;
+            if (word > 0)
+                cut = word;             /* break at the last space that fits */
             if (cut == 0)
-                cut = max_chars;
+                cut = 1;
         }
         if (out)
             out(ctx, text, cut, lines);
@@ -473,9 +479,9 @@ static int wrap(const char *text, int max_chars,
     return lines;
 }
 
-static int body_chars(const struct wg_dialog *d)
+static int body_width(const struct wg_dialog *d)
 {
-    return (d->r.w - 2 * DLG_PAD) / FONT_W;
+    return d->r.w - 2 * DLG_PAD;
 }
 
 void wg_dialog_init(struct wg_dialog *d, const char *title, const char *body,
@@ -506,11 +512,11 @@ void wg_dialog_layout(struct wg_dialog *d, int w, int h)
     const struct theme *t = T();
     int dw = w - 32 < DLG_W ? w - 32 : DLG_W;
     d->r.w = dw;
-    int lines = wrap(d->body, body_chars(d), 0, 0);
+    int lines = wrap(d->body, body_width(d), 0, 0);
     if (lines < 1)
         lines = 1;
-    int dh = DLG_PAD + FONT_H + 12 + lines * DLG_LINE + (d->has_entry ? 12 + 34 : 0) + 24 +
-             t->button_size + DLG_PAD;
+    int dh = DLG_PAD + text_height(TEXT_HEADING) + 10 + lines * DLG_LINE + (d->has_entry ? 12 + 34 : 0) +
+             24 + t->button_size + DLG_PAD;
     d->r = (struct gfx_rect){ (w - dw) / 2, (h - dh) / 2, dw, dh };
     int y = d->r.y + dh - DLG_PAD - t->button_size;
     int bw = (dw - 2 * DLG_PAD - 12 * (d->nbuttons - 1)) / d->nbuttons;
@@ -534,9 +540,8 @@ struct body_ctx {
 static void draw_body_line(void *ctx, const char *text, int len, int line)
 {
     struct body_ctx *b = ctx;
-    int x = b->cx - len * FONT_W / 2;
-    for (int i = 0; i < len; i++)
-        gfx_char(b->s, x + i * FONT_W, b->y + line * DLG_LINE, text[i], b->colour, GFX_TRANSPARENT);
+    int x = b->cx - text_width_n(text, len, TEXT_BODY) / 2;
+    text_draw_n(b->s, x, b->y + line * DLG_LINE, text, len, TEXT_BODY, b->colour);
 }
 
 void wg_dialog_draw(struct gfx_surface *s, struct wg_dialog *d)
@@ -544,10 +549,10 @@ void wg_dialog_draw(struct gfx_surface *s, struct wg_dialog *d)
     const struct theme *t = T();
     int cx = d->r.x + d->r.w / 2, y = d->r.y + DLG_PAD;
     gfx_fill_round_rect(s, d->r.x, d->r.y, d->r.w, d->r.h, 12, t->dialog_bg);
-    wg_label_centred(s, cx, y, d->title, WG_TEXT_TITLE);
-    y += FONT_H + 12;
+    wg_label_centred(s, cx, y, d->title, WG_TEXT_HEADING);
+    y += text_height(TEXT_HEADING) + 10;
     struct body_ctx b = { s, cx, y, d->body_error ? t->destructive : t->fg_dim };
-    wrap(d->body, body_chars(d), draw_body_line, &b);
+    wrap(d->body, body_width(d), draw_body_line, &b);
     if (d->has_entry)
         wg_entry_draw(s, &d->entry);
     for (int i = 0; i < d->nbuttons; i++)

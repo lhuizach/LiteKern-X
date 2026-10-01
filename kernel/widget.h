@@ -31,8 +31,14 @@ struct wg_pointer {
 struct wg_pointer wg_pointer_make(int x, int y, uint8_t buttons, uint8_t changed, uint32_t time_ms);
 
 /* --- text ----------------------------------------------------------------- */
-enum wg_text { WG_TEXT_BODY, WG_TEXT_DIM, WG_TEXT_TITLE, WG_TEXT_ERROR };
-void wg_label(struct gfx_surface *s, int x, int y, const char *text, enum wg_text style);
+/* Body text, dim (secondary), bold title, big heading, small caption, error.
+ * The GUI font (kernel/text.h); y is the top of the line box. */
+enum wg_text { WG_TEXT_BODY, WG_TEXT_DIM, WG_TEXT_TITLE, WG_TEXT_ERROR, WG_TEXT_HEADING,
+               WG_TEXT_SMALL };
+/* Returns the width drawn. */
+int wg_label(struct gfx_surface *s, int x, int y, const char *text, enum wg_text style);
+int wg_label_width(const char *text, enum wg_text style);
+int wg_label_height(enum wg_text style);
 /* Centred on x. */
 void wg_label_centred(struct gfx_surface *s, int cx, int y, const char *text, enum wg_text style);
 /* Draw text in at most max_w pixels, ending in "..." if it doesn't fit.

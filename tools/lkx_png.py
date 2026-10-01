@@ -39,10 +39,10 @@ def read_rgba(path):
     if not ihdr:
         raise PngError(f"{path}: no IHDR")
     w, h, depth, ctype, _, _, interlace = ihdr
-    if depth != 8 or ctype not in (2, 6) or interlace:
-        raise PngError(f"{path}: need 8-bit RGB/RGBA, not interlaced "
+    if depth != 8 or ctype not in (0, 2, 6) or interlace:
+        raise PngError(f"{path}: need 8-bit grey/RGB/RGBA, not interlaced "
                        f"(got depth {depth}, colour type {ctype}, interlace {interlace})")
-    bpp = 4 if ctype == 6 else 3
+    bpp = {0: 1, 2: 3, 6: 4}[ctype]
     raw = zlib.decompress(idat)
     stride = w * bpp
     prev = bytearray(stride)
@@ -64,8 +64,11 @@ def read_rgba(path):
                 line[i] = (line[i] + _paeth(a, b, c)) & 0xff
             elif f != 0:
                 raise PngError(f"{path}: bad filter {f} on row {y}")
-        rows.append([tuple(line[x * bpp:x * bpp + bpp]) + ((255,) if bpp == 3 else ())
-                     for x in range(w)])
+        if bpp == 1:                    # grey: (v, v, v, 255)
+            rows.append([(v, v, v, 255) for v in line])
+        else:
+            rows.append([tuple(line[x * bpp:x * bpp + bpp]) + ((255,) if bpp == 3 else ())
+                         for x in range(w)])
         prev = line
     return w, h, rows
 

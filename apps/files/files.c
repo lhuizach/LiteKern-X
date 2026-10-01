@@ -247,7 +247,7 @@ static void layout(void)
     const struct theme *t = theme_get();
     int w = canvas.w - 4 * t->margin < LIST_MAX_W ? canvas.w - 4 * t->margin : LIST_MAX_W;
     int x = (canvas.w - w) / 2, bar_y = canvas.h - BAR_GAP - t->button_size;
-    int top = 20 + FONT_H + 14;
+    int top = 20 + wg_label_height(WG_TEXT_BODY) + 12;
     list.r = (struct gfx_rect){ x, top, w, (bar_y - BAR_GAP - top) / t->row_h * t->row_h };
     int lx = x, rx = x + w;
     for (int i = 0; i < 4; i++) {
@@ -279,9 +279,9 @@ static void update_buttons(void)
 static void draw_status(void)
 {
     const struct theme *t = theme_get();
-    gfx_fill_rect(&canvas, 0, 12, canvas.w, FONT_H + 16, t->window_bg);
+    gfx_fill_rect(&canvas, 0, 12, canvas.w, wg_label_height(WG_TEXT_BODY) + 16, t->window_bg);
     wg_label_centred(&canvas, canvas.w / 2, 20, status, status_error ? WG_TEXT_ERROR : WG_TEXT_DIM);
-    show((struct gfx_rect){ 0, 12, canvas.w, FONT_H + 16 });
+    show((struct gfx_rect){ 0, 12, canvas.w, wg_label_height(WG_TEXT_BODY) + 16 });
 }
 
 static void draw_all(void)

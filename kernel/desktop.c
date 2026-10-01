@@ -10,6 +10,7 @@
  * logic handles them all: hover highlights, and a press released over the
  * same target activates it. */
 #include "kernel/desktop.h"
+#include "kernel/text.h"
 #include "kernel/apps.h"
 #include "kernel/console.h"
 #include "kernel/driver.h"
@@ -231,11 +232,9 @@ static void draw_clock(void)
     const struct theme *t = T();
     char text[24];
     clock_text(text);
-    int w = 24 * FONT_W, x = (S()->w - w) / 2, y = (t->topbar_h - FONT_H) / 2;
+    int w = 220, x = (S()->w - w) / 2, y = (t->topbar_h - text_height(TEXT_BOLD)) / 2;
     gfx_fill_rect(S(), x, 0, w, t->topbar_h, t->topbar_bg);
-    int tw = gfx_text_width(text);
-    gfx_text(S(), (S()->w - tw) / 2, y, text, t->fg, GFX_TRANSPARENT);
-    gfx_text(S(), (S()->w - tw) / 2 + 1, y, text, t->fg, GFX_TRANSPARENT);
+    text_draw(S(), (S()->w - text_width(text, TEXT_BOLD)) / 2, y, text, TEXT_BOLD, 0xffffff);
     screen_damage(x, 0, w, t->topbar_h);
 }
 
@@ -244,9 +243,8 @@ static void draw_topbar(void)
     const struct theme *t = T();
     gfx_fill_rect(S(), 0, 0, S()->w, t->topbar_h, t->topbar_bg);
     if (running) {              /* the open app's name, after Home */
-        int x = t->spacing + BAR_BUTTON_W + t->spacing * 2, y = (t->topbar_h - FONT_H) / 2;
-        gfx_text(S(), x, y, running->name, t->fg, GFX_TRANSPARENT);
-        gfx_text(S(), x + 1, y, running->name, t->fg, GFX_TRANSPARENT);
+        int x = t->spacing + BAR_BUTTON_W + t->spacing * 2, y = (t->topbar_h - text_height(TEXT_BOLD)) / 2;
+        text_draw(S(), x, y, running->name, TEXT_BOLD, 0xffffff);
     }
     for (int i = 0; i < ntargets; i++)
         if (targets[i].kind == T_HOME || targets[i].kind == T_POWER)
@@ -295,19 +293,18 @@ static void draw_dock(void)
 /* The app's name in a small label above its dock item, while hovered. */
 static void draw_dock_label(void)
 {
-    const struct theme *t = T();
     struct gfx_rect d = dock_rect();
-    int band_y = d.y - 8 - FONT_H - 12;
-    background(0, band_y, S()->w, FONT_H + 12);
+    int lh = text_height(TEXT_BODY), band_y = d.y - 8 - lh - 10;
+    background(0, band_y, S()->w, lh + 10);
     if (hover >= 0 && (targets[hover].kind == T_DOCK || targets[hover].kind == T_APPS)) {
         const char *name = targets[hover].kind == T_APPS ? "Show Apps"
                                                          : builtin_apps[targets[hover].app].name;
         struct gfx_rect r = targets[hover].r;
-        int w = gfx_text_width(name) + 20, x = r.x + (r.w - w) / 2;
-        gfx_fill_round_rect(S(), x, band_y, w, FONT_H + 12, 8, t->dialog_bg);
-        gfx_text(S(), x + 10, band_y + 6, name, t->fg, GFX_TRANSPARENT);
+        int w = text_width(name, TEXT_BODY) + 24, x = r.x + (r.w - w) / 2;
+        gfx_fill_round_rect(S(), x, band_y, w, lh + 10, 8, 0x36363a);     /* GNOME's tooltip */
+        text_draw(S(), x + 12, band_y + 5, name, TEXT_BODY, 0xffffff);
     }
-    screen_damage(0, band_y, S()->w, FONT_H + 12);
+    screen_damage(0, band_y, S()->w, lh + 10);
 }
 
 static void draw_icon(const struct app *a, int x, int y)
@@ -319,7 +316,8 @@ static void draw_icon(const struct app *a, int x, int y)
     } else {                    /* no icon built in: its initial on an accent tile */
         char initial[2] = { a->name[0], '\0' };
         gfx_fill_round_rect(S(), x, y, 48, 48, 10, t->accent_bg);
-        gfx_text(S(), x + 20, y + 16, initial, t->accent_fg, GFX_TRANSPARENT);
+        text_draw(S(), x + (48 - text_width(initial, TEXT_HEADING)) / 2, y + (48 - text_height(TEXT_HEADING)) / 2,
+                  initial, TEXT_HEADING, t->accent_fg);
     }
 }
 
@@ -346,8 +344,8 @@ static void draw_target(int i)
         uint32_t bg = disabled ? t->dialog_bg : target_bg(i, t->dialog_bg);
         gfx_fill_rect(S(), r.x, r.y, r.w, r.h, t->dialog_bg);
         gfx_fill_round_rect(S(), r.x, r.y, r.w, r.h, 6, bg);
-        gfx_text(S(), r.x + 12, r.y + (r.h - FONT_H) / 2, disabled ? "Shut Down" : "Restart",
-                 disabled ? gfx_mix(t->fg, t->dialog_bg, 110) : t->fg, GFX_TRANSPARENT);
+        text_draw(S(), r.x + 12, r.y + (r.h - text_height(TEXT_BODY)) / 2, disabled ? "Shut Down" : "Restart", TEXT_BODY,
+                  disabled ? gfx_mix(t->fg, t->dialog_bg, 110) : t->fg);
         break;
     }
     case T_TILE: {
@@ -358,8 +356,8 @@ static void draw_target(int i)
                                  i == pressed ? A_PRESSED : A_HOVER);
         int ix = r.x + (r.w - 48) / 2, iy = r.y + 14;
         draw_icon(a, ix, iy);
-        gfx_text(S(), r.x + (r.w - gfx_text_width(a->name)) / 2, iy + 48 + 12, a->name, t->fg,
-                 GFX_TRANSPARENT);
+        text_draw(S(), r.x + (r.w - text_width(a->name, TEXT_BODY)) / 2, iy + 48 + 10, a->name, TEXT_BODY,
+                  0xffffff);
         break;
     }
     case T_DOCK:

@@ -1,4 +1,5 @@
 #include "kernel/wm.h"
+#include "kernel/text.h"
 #include "kernel/console.h"
 #include "kernel/errno.h"
 #include "kernel/font.h"
@@ -86,7 +87,7 @@ static void layout(void)
     for (int i = 0; i < nbuttons; i++) {
         struct button *b = &buttons[i];
         int w = b->icon != WM_ICON_NONE ? t->button_size
-                                        : gfx_text_width(b->label) + 2 * t->margin;
+                                        : text_width(b->label, TEXT_BOLD) + 2 * t->margin;
         if (b->side == WM_LEFT) {
             b->r = (struct gfx_rect){ left, top, w, t->button_size };
             left += w + t->spacing;
@@ -143,8 +144,8 @@ static void draw_button(struct gfx_surface *s, int i)
     if (b->icon != WM_ICON_NONE)
         draw_icon(s, b->icon, cx, cy, t->fg);
     else
-        gfx_text(s, cx - gfx_text_width(b->label) / 2, cy - FONT_H / 2, b->label, t->fg,
-                 GFX_TRANSPARENT);
+        text_draw(s, cx - text_width(b->label, TEXT_BOLD) / 2, cy - text_height(TEXT_BOLD) / 2, b->label,
+                  TEXT_BOLD, t->fg);
 }
 
 static void draw_header(void)
@@ -156,10 +157,8 @@ static void draw_header(void)
     gfx_fill_rect(s, 0, y + t->headerbar_h - 1, s->w, 1, t->headerbar_border);
     for (int i = 0; i <= nbuttons; i++)
         draw_button(s, i);
-    int tw = gfx_text_width(title);
-    gfx_text(s, (s->w - tw) / 2, y + (t->headerbar_h - FONT_H) / 2, title, t->fg, GFX_TRANSPARENT);
-    /* Faux bold, as GNOME titles are: draw it again one pixel to the right. */
-    gfx_text(s, (s->w - tw) / 2 + 1, y + (t->headerbar_h - FONT_H) / 2, title, t->fg, GFX_TRANSPARENT);
+    int tw = text_width(title, TEXT_BOLD);
+    text_draw(s, (s->w - tw) / 2, y + (t->headerbar_h - text_height(TEXT_BOLD)) / 2, title, TEXT_BOLD, t->fg);
     screen_damage(0, y, s->w, t->headerbar_h);
 }
 

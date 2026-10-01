@@ -24,7 +24,7 @@ LIBGCC  := $(shell $(CC) -m32 -print-libgcc-file-name)
 KERNEL_SRCS := $(wildcard kernel/*.c drivers/*.c kernel/*.asm) $(EXTRA_KERNEL_SRCS)
 KERNEL_OBJS := $(patsubst %.c,$(BUILD)/%.o,$(filter %.c,$(KERNEL_SRCS))) \
                $(patsubst %.asm,$(BUILD)/%.asm.o,$(filter %.asm,$(KERNEL_SRCS))) \
-               $(BUILD)/gen/cursors.o $(BUILD)/gen/icons.o
+               $(BUILD)/gen/cursors.o $(BUILD)/gen/icons.o $(BUILD)/gen/uifont.o
 
 # The disk image: the boot area (MBR, stage 2, kernel), then the ramdisk at
 # RAMDISK_LBA (512 KiB: apps, wallpapers; read by the kernel at boot through
@@ -63,7 +63,8 @@ APP_CFLAGS   := -m32 -march=i686 -mtune=bonnell -std=gnu11 -O2 -ffreestanding -f
                 -fno-stack-protector -fno-asynchronous-unwind-tables -fcf-protection=none \
                 -mgeneral-regs-only -Wall -Wextra -Werror -I.
 SDK_OBJS     := $(BUILD)/sdk/crt0.asm.o $(BUILD)/sdk/sdk.o $(BUILD)/sdk/gfx.o \
-                $(BUILD)/sdk/widget.o $(BUILD)/sdk/theme.o $(BUILD)/sdk/string.o
+                $(BUILD)/sdk/widget.o $(BUILD)/sdk/theme.o $(BUILD)/sdk/string.o \
+                $(BUILD)/sdk/text.o $(BUILD)/sdk/uifont.o
 APP_LKX      := $(foreach p,$(APP_PATHS),$(BUILD)/$(p)/$(notdir $(p)).lkx)
 RAMDISK_ARGS := $(foreach p,$(APP_PATHS),apps/$(notdir $(p))/kerns.json=$(p)/kerns.json \
                 apps/$(notdir $(p))/$(notdir $(p)).lkx=$(BUILD)/$(p)/$(notdir $(p)).lkx) \
@@ -150,6 +151,18 @@ $(BUILD)/gen/cursors.c: $(CURSOR_ASSETS) tools/cursors2c.py tools/lkx_png.py
 
 $(BUILD)/gen/cursors.o: $(BUILD)/gen/cursors.c kernel/cursor.h
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+# The GUI font (kernel/text.h): the committed atlas -> C.
+$(BUILD)/gen/uifont.c: assets/fonts/ui-font.json assets/fonts/ui-font.png tools/font2c.py tools/lkx_png.py
+	@mkdir -p $(dir $@)
+	python3 tools/font2c.py $< $@
+
+$(BUILD)/gen/uifont.o: $(BUILD)/gen/uifont.c kernel/text.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/sdk/uifont.o: $(BUILD)/gen/uifont.c kernel/text.h
+	@mkdir -p $(dir $@)
+	$(CC) $(APP_CFLAGS) -c -o $@ $<
 
 $(BUILD)/gen/icons.c: $(ICON_ASSETS) tools/icons2c.py tools/lkx_png.py
 	@mkdir -p $(dir $@)
