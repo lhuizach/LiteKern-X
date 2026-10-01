@@ -1,0 +1,7 @@
+{
+  "name": "Calculator",
+  "icon": "calculator",
+  "entry": "calculator.lkx",
+  "version": "1.0",
+  "order": 2
+}

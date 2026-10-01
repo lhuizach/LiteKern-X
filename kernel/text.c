@@ -3,6 +3,8 @@
 static const struct text_glyph *glyph(const struct text_face *f, char c)
 {
     unsigned char u = (unsigned char)c;
+    if (u >= 0x80 && u < 0x80 + TEXT_EXTRA)
+        return &f->glyphs[95 + (u - 0x80)];
     return &f->glyphs[(u >= 32 && u <= 126 ? u : '?') - 32];
 }
 
@@ -92,11 +94,11 @@ int text_draw_fit(struct gfx_surface *s, int x, int y, const char *str, int max_
 {
     if (text_width(str, st) <= max_w)
         return text_draw(s, x, y, str, st, colour);
-    int dots = text_width("...", st), n = 0;
+    int dots = text_width(TEXT_ELLIPSIS, st), n = 0;
     while (str[n] && text_width_n(str, n + 1, st) + dots <= max_w)
         n++;
     while (n > 0 && str[n - 1] == ' ')
         n--;                            /* "Holiday ..." reads worse than "Holiday..." */
     int w = text_draw_n(s, x, y, str, n, st, colour);
-    return w + text_draw(s, x + w, y, "...", st, colour);
+    return w + text_draw(s, x + w, y, TEXT_ELLIPSIS, st, colour);
 }

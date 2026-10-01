@@ -26,6 +26,10 @@ FACES = [                       # name, pixel size, weight (variable font's wght
     ("large", 32, 300),
 ]
 CHARS = [chr(c) for c in range(32, 127)]
+# Beyond ASCII, after '~': these Unicode characters, reached in C as the bytes
+# 0x80, 0x81, ... (kernel/text.h's TEXT_MINUS etc.).
+EXTRA = ["−", "×", "÷", "…"]     # minus, times, divide, ellipsis
+CHARS += EXTRA
 
 
 def face(path, size, weight):
@@ -48,7 +52,7 @@ def main():
         sys.exit("usage: font-rasterize.py FONT.ttf OUT_DIR")
     path, out = sys.argv[1], sys.argv[2]
     os.makedirs(out, exist_ok=True)
-    meta = {"version": 1, "source": os.path.basename(path), "faces": []}
+    meta = {"version": 1, "source": os.path.basename(path), "extra": EXTRA, "faces": []}
     rows = []                   # (face index, char, mask)
     for name, size, weight in FACES:
         f = face(path, size, weight)

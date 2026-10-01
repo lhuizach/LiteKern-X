@@ -5,12 +5,18 @@
  * Each style is one size and weight. Text is drawn with its line box's top
  * at y: the box is text_height() tall, and the glyphs are blended into the
  * surface by their coverage (straight alpha over whatever is there). Printable
- * ASCII only; other bytes draw as '?'. */
+ * ASCII, plus a few symbols as the bytes below; other bytes draw as '?'. */
 #ifndef LKX_TEXT_H
 #define LKX_TEXT_H
 
 #include <stdint.h>
 #include "kernel/gfx.h"
+
+#define TEXT_MINUS    "\x80"     /* U+2212 */
+#define TEXT_TIMES    "\x81"     /* U+00D7 */
+#define TEXT_DIVIDE   "\x82"     /* U+00F7 */
+#define TEXT_ELLIPSIS "\x83"     /* U+2026 */
+#define TEXT_EXTRA    4
 
 enum text_style {
     TEXT_BODY,          /* 15 px regular: most text */
@@ -31,7 +37,7 @@ struct text_glyph {
 struct text_face {
     const char *name;
     int size, ascent, descent;
-    const struct text_glyph *glyphs;    /* for ' ' .. '~' */
+    const struct text_glyph *glyphs;    /* for ' ' .. '~', then the TEXT_EXTRA symbols */
     const uint8_t *cov;
 };
 
@@ -44,7 +50,7 @@ int text_draw(struct gfx_surface *s, int x, int y, const char *str, enum text_st
 /* The first n characters only. */
 int text_draw_n(struct gfx_surface *s, int x, int y, const char *str, int n, enum text_style st,
                 uint32_t colour);
-/* Draw in at most max_w pixels, ending in "..." if it doesn't fit. */
+/* Draw in at most max_w pixels, ending in an ellipsis if it doesn't fit. */
 int text_draw_fit(struct gfx_surface *s, int x, int y, const char *str, int max_w,
                   enum text_style st, uint32_t colour);
 

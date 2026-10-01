@@ -97,6 +97,17 @@ boot_until() {
 }
 
 NAVY=1e3a5f TEXT=c8d0dc RED=801010 WHITE=ffffff
+
+# The shell's layout on QEMU's 1024x768 screen, worked out like
+# kernel/desktop.c does, so adding an app doesn't move every test. The pointer
+# starts at the centre, 512,384. dock_x I N: the centre of dock item I of N
+# apps (Show Apps is item N); grid_x I N: of app I in the app menu.
+dock_x() { echo $(( (1024 - (($2 + 1) * 60 + 16)) / 2 + 38 + $1 * 60 )); }
+grid_x() { echo $(( (1024 - $2 * 112) / 2 + 56 + $1 * 112 )); }
+NAPPS=$(( $(ls -d apps/*/ | wc -l) + 1 ))      # the apps/ folders, then Log
+FILES_X=$(dock_x 0 "$NAPPS") SETTINGS_X=$(dock_x 2 "$NAPPS") LOG_X=$(dock_x $((NAPPS - 1)) "$NAPPS")
+SHOWAPPS_X=$(dock_x "$NAPPS" "$NAPPS")
+FILES_ICON="$((FILES_X - 30)),698,$((FILES_X + 30)),758"      # the folder icon in the dock
 # The desktop's bottom-right corner: the wallpaper's bottom edge colour (the
 # 1024x600 image is centred on QEMU's 1024x768 screen). PLAIN: no wallpaper.
 DESKTOP=$(sed -n 's/^bottom=//p' build/gen/wallpapers/crossing.lkxw.txt) PLAIN=202634
@@ -129,7 +140,7 @@ selftest_done_re='^selftest: drivers [0-9]+/[0-9]+ passed.?$|^PANIC: .*\).?$'
 user_done_re='^selftest: user [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$'
 panic_re='^PANIC: .*[0-9a-f)].?$'
 
-SCREEN="corner= has=$WHITE@0,0,120,30 has=3584e4@392,698,452,758" boot_until build/litekernx.img "$done_re" 20
+SCREEN="corner= has=$WHITE@0,0,120,30 has=3584e4@$FILES_ICON" boot_until build/litekernx.img "$done_re" 20
 check "boots to ready with per-phase timing" \
     '^LiteKern X$' \
     '^\[boot\] tsc=[0-9]+ MHz' \
@@ -180,7 +191,7 @@ check "boots to the desktop (top bar, dock, wallpaper)" \
     '^lkx: Files \(apps/files/files\.lkx, [0-9]+ KB\)$' \
     "^screen: corner $DESKTOP$" \
     "^screen: has $WHITE in 0,0,120,30: yes$" \
-    '^screen: has 3584e4 in 392,698,452,758: yes$' \
+    "^screen: has 3584e4 in $FILES_ICON: yes$" \
     '^fb0: write-combining on \(MTRR 0xfd000000-0xfd3fffff\)$'
 
 SCREEN="corner= has=ffffff@16,16,200,32 has=e8a33d@376,48,428,88 has=48a6e8@16,110,500,290" \
@@ -274,21 +285,19 @@ check "desktop: logged clicks don't draw the log over it" \
     '!PANIC'
 
 # The shell on the 1024x768 screen. The pointer starts at 512,384.
-#   dock (bottom, centred): Files 392-452, Settings 452-512, Log 512-572,
-#   Show Apps 572-632; y 698-758
+#   dock (bottom, centred): dock_x above; y 698-758
 #   top bar: Home 6-46, power 978-1018; y 3-27. Power menu: Restart 844-1012 x 40-74
-#   app menu (three apps, centred above the dock): Files 344-456, Settings 456-568,
-#   Log 568-680; y 311-415
+#   app menu (one row, centred above the dock): grid_x above; y 311-415
 #   a window's close button: 1001,53
-KEYS="move:-90,344 press:1 release move:579,-675 press:1 release" KEYS_DONE='^desktop: close Files' \
-SCREEN="corner= has=3584e4@392,698,452,758" \
+KEYS="move:$((FILES_X - 512)),344 press:1 release move:$((1001 - FILES_X)),-675 press:1 release" KEYS_DONE='^desktop: close Files' \
+SCREEN="corner= has=3584e4@$FILES_ICON" \
     boot_until build/litekernx.img "$done_re" 20
 check "desktop: the dock opens Files (a ring 3 app); its close button ends it" \
     '^desktop: open Files$' \
     '^lkx: Files exited \(0\)$' \
     '^desktop: close Files$' \
     "^screen: corner $DESKTOP$" \
-    '^screen: has 3584e4 in 392,698,452,758: yes$' \
+    "^screen: has 3584e4 in $FILES_ICON: yes$" \
     '!PANIC'
 
 boot_until build/test-widgets/litekernx.img '^selftest: widgets [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$' 20
@@ -302,7 +311,7 @@ check "widgets: button, list, entry, dialog (states, input, results)" \
 # Linux's own tools check the partition in the image file.
 mkdir -p build/test-files
 cp build/litekernx.img build/test-files/disk.img
-KEYS="move:-90,344 press:1 release ctrl-n h i ret f2 backspace backspace b y e ret ctrl-n b y e ret esc home ret ctrl-n n e w dot t x t ret backspace home down down delete ret" \
+KEYS="move:$((FILES_X - 512)),344 press:1 release ctrl-n h i ret f2 backspace backspace b y e ret ctrl-n b y e ret esc home ret ctrl-n n e w dot t x t ret backspace home down down delete ret" \
 KEYS_DONE='^user: files: delete bye' boot_until build/test-files/disk.img "$done_re" 40
 dd if=build/test-files/disk.img of=build/test-files/fat.img bs=512 skip=8192 status=none
 out+=$'\n'$(fsck.fat -n build/test-files/fat.img >/dev/null 2>&1 && echo "fsck: clean" || echo "fsck: ERRORS")
@@ -323,7 +332,7 @@ check "Files: create, rename, delete and folders on the FAT32 partition (checked
     '!user: files: create bye|^user: files: .* failed|PANIC'
 
 # The Log app shows the log below the top bar and its header bar (30 + 46 px).
-KEYS="move:30,344 press:1 release a b c d e f g h i j k l m home" KEYS_DONE="^kbd: key 0x026 'l'" \
+KEYS="move:$((LOG_X - 512)),344 press:1 release a b c d e f g h i j k l m home" KEYS_DONE="^kbd: key 0x026 'l'" \
 SCREEN="has=$TEXT@0,76,200,92 has=$TEXT@800,76,1024,92 has=$TEXT@0,92,100,108" \
     boot_until build/litekernx.img "$done_re" 20
 check "Log app: the log in a window; Home shows its start with the indicator" \
@@ -333,14 +342,14 @@ check "Log app: the log in a window; Home shows its start with the indicator" \
     "^screen: has $TEXT in 0,92,100,108: yes$" \
     '!kbd: key 0x147'
 
-KEYS="move:90,344 press:1 release move:22,-365 press:1 release" KEYS_DONE='^desktop: open Log' \
+KEYS="move:$((SHOWAPPS_X - 512)),344 press:1 release move:$(( $(grid_x $((NAPPS - 1)) "$NAPPS") - SHOWAPPS_X )),-365 press:1 release" KEYS_DONE='^desktop: open Log' \
     boot_until build/litekernx.img "$done_re" 20
 check "shell: Show Apps opens the app menu; clicking an app there opens it" \
     '^desktop: app menu open$' \
     '^desktop: open Log$' \
     '!PANIC'
 
-KEYS="move:-90,344 press:1 release move:-396,-713 press:1 release" KEYS_DONE='^desktop: close Files' \
+KEYS="move:$((FILES_X - 512)),344 press:1 release move:$((26 - FILES_X)),-713 press:1 release" KEYS_DONE='^desktop: close Files' \
 SCREEN="corner=" boot_until build/litekernx.img "$done_re" 20
 check "shell: Home closes the open app" \
     '^desktop: open Files$' \
@@ -352,7 +361,7 @@ check "shell: Home closes the open app" \
 # Settings (Appearance): the Light card (472-672 x 124-244), Right = the next
 # accent, the "None" background (300-460 x 416-510). The window must turn
 # light at once (window_bg fafafb), and the kernel logs each change.
-KEYS="move:-30,344 press:1 release sleep:1.5 move:90,-544 press:1 release sleep:0.5 right sleep:0.3 move:-192,279 press:1 release sleep:0.5" \
+KEYS="move:$((SETTINGS_X - 512)),344 press:1 release sleep:1.5 move:$((572 - SETTINGS_X)),-544 press:1 release sleep:0.5 right sleep:0.3 move:-192,279 press:1 release sleep:0.5" \
 KEYS_DONE='^appearance: light, accent teal, wallpaper none' SCREEN="has=fafafb@60,300,240,600" \
     boot_until build/litekernx.img "$done_re" 30
 check "Settings: style, accent and background change at once" \
@@ -362,6 +371,22 @@ check "Settings: style, accent and background change at once" \
     '^appearance: light, accent teal, wallpaper crossing$' \
     '^appearance: light, accent teal, wallpaper none$' \
     '^screen: has fafafb in 60,300,240,600: yes$' \
+    '!PANIC'
+
+# Calculator: sums typed on the keyboard, plus one with its own buttons (the
+# keypad's "7" is at column 0, row 1: x = centre - 2 keys, y = 76+24+112+16 +
+# 66 + 28 in screen coordinates). Exact decimals; overflow and / 0 are errors.
+CALC_X=$(dock_x 1 "$NAPPS")
+KEYS="move:$((CALC_X - 512)),344 press:1 release sleep:1.5 1 2 shift-equal 3 0 ret 7 slash 0 ret c 1 dot 5 shift-8 4 ret 2 0 0 minus 1 0 shift-5 ret 9 9 9 9 9 9 9 9 9 9 9 shift-8 9 9 9 ret c 1 slash 3 ret c move:$((465 - CALC_X)),-406 press:1 release press:1 release ret" \
+KEYS_DONE='^user: calculator: 1 / 3 = 0\.333333$' boot_until build/litekernx.img "$done_re" 30
+check "Calculator: exact decimals; overflow and division by zero are errors" \
+    '^user: calculator: open$' \
+    '^user: calculator: 12 \+ 30 = 42$' \
+    '^user: calculator: 7 / 0 = error$' \
+    '^user: calculator: 1\.5 x 4 = 6$' \
+    '^user: calculator: 200 - 20 = 180$' \
+    '^user: calculator: 99999999999 x 999 = error$' \
+    '^user: calculator: 1 / 3 = 0\.333333$' \
     '!PANIC'
 
 KEYS="move:486,-369 press:1 release move:-68,42 press:1 release" KEYS_DONE='^power: restarting' \
@@ -409,7 +434,7 @@ check "BIOS disk: reads, refuses past the end, writes that reach the disk" \
 mkdir -p build/test-ata
 bash tests/kernel/make-internal-disk.sh build/test-ata/internal.img
 before=$(md5sum < build/test-ata/internal.img)
-KEYS="move:-90,344 press:1 release down down ret ctrl-n x ret backspace down ret" \
+KEYS="move:$((FILES_X - 512)),344 press:1 release down down ret ctrl-n x ret backspace down ret" \
 KEYS_DONE='^user: files: .* is not supported' boot_until build/litekernx.img "$done_re" 30 \
     -drive file=build/test-ata/internal.img,format=raw,if=ide,index=1
 [ "$before" = "$(md5sum < build/test-ata/internal.img)" ] && out+=$'\n'"image: unchanged" || out+=$'\n'"image: CHANGED"
@@ -423,12 +448,12 @@ check "ATA internal disk: found, FAT32 read-only, NTFS left alone, never written
     '!user: files: create|PANIC'
 
 # Misbehaving apps must never take the kernel down (Phase 2 section 5). The test
-# image's dock: Files 302-362, Settings 362-422, Crash 422-482, Badcalls 482-542,
-# Hang 542-602
+# image's dock: the apps/ folders, then Crash, Badcalls, Hang, then Log.
 # (y 698-758). Crash writes to address 0; Badcalls passes kernel pointers and
 # nonsense to the calls; Hang spins until the watchdog stops it. Then Files
 # must still open and work.
-KEYS="move:-60,344 press:1 release sleep:1 move:60,0 press:1 release sleep:1 move:60,0 press:1 release sleep:12 move:-240,0 press:1 release sleep:1" \
+n=$((NAPPS + 3)); crash=$(dock_x $((NAPPS - 1)) $n); files=$(dock_x 0 $n)
+KEYS="move:$((crash - 512)),344 press:1 release sleep:1 move:60,0 press:1 release sleep:1 move:60,0 press:1 release sleep:12 move:$((files - crash - 120)),0 press:1 release sleep:1" \
 KEYS_DONE='^user: files: open' boot_until build/test-apps/litekernx.img "$done_re" 40
 check "apps: a crash, bad calls and a hang each end only the app" \
     '^user: killed by exception 14 \(#PF page fault\) at eip=0x8' \
@@ -457,9 +482,9 @@ mkdir -p build/test-stress
 cp build/litekernx.img build/test-stress/disk.img
 stress="gap:0.1"
 for i in $(seq 15); do
-    stress+=" move:-90,344 press:1 release move:579,-675 press:1 release move:-489,331"
+    stress+=" move:$((FILES_X - 512)),344 press:1 release move:$((1001 - FILES_X)),-675 press:1 release move:-489,331"
 done
-stress+=" move:-90,344 press:1 release sleep:1 gap:0.02"
+stress+=" move:$((FILES_X - 512)),344 press:1 release sleep:1 gap:0.02"
 for i in $(seq 60); do stress+=" down up"; done
 for i in $(seq 30); do stress+=" press:1 release"; done
 stress+=" home end pgdn pgup ctrl-n a b c esc f2 esc delete esc gap:0.15 sleep:0.5 ctrl-n o k ret"
