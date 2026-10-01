@@ -6,12 +6,17 @@
  * the header's back button or Backspace goes up. Unsupported partitions are
  * listed but won't open; read-only ones can't be changed.
  *
+ * Text files (up to 64 KB) open in a simple viewer: wrapped lines, the arrow
+ * keys and Page Up/Down to scroll, Backspace, Esc or the back button to
+ * return. Other files say they can't be shown yet.
+ *
  * Everything goes through sdk/kern86.h: the window is a canvas it draws with
  * the kernel's widgets, and the disks are reached by path. Actions are
  * logged ("user: files: ...") for the tests. */
 #include "kernel/errno.h"
 #include "kernel/font.h"
 #include "kernel/string.h"
+#include "kernel/text.h"
 #include "kernel/theme.h"
 #include "kernel/widget.h"
 #include "sdk/kern86.h"
@@ -52,6 +57,17 @@ enum action { NONE, NEW_FILE, NEW_FOLDER, RENAME, DELETE };
 static struct wg_dialog dialog;
 static enum action dialog_for;
 static char dialog_text[128];
+
+/* The text viewer (Phase 3 §3). */
+#define VIEW_MAX (64 * 1024)
+#define VIEW_LINES 8192
+static int viewing;
+static char view_name[K86_NAME_MAX];
+static char view_text[VIEW_MAX + 1];
+static int view_len;
+static struct { int start, len; } view_line[VIEW_LINES];
+static int view_lines, view_top;
+static struct gfx_rect view_card;
 
 /* --- text helpers ------------------------------------------------------------ */
 
@@ -330,8 +346,8 @@ static void show_header(void)
 {
     struct k86_header h;
     memset(&h, 0, sizeof(h));
-    append(h.title, folder_name(), h.title + sizeof(h.title));
-    if (vol >= 0 && (depth > 0 || nvolumes > 1)) {
+    append(h.title, viewing ? view_name : folder_name(), h.title + sizeof(h.title));
+    if (viewing || (vol >= 0 && (depth > 0 || nvolumes > 1))) {
         h.nbuttons = 1;
         h.buttons[0].side = 0;
         h.buttons[0].icon = 1;              /* back */
@@ -355,6 +371,150 @@ static void refresh(const char *select)
     load(select);
     show_header();
     draw_all();
+}
+
+/* --- the text viewer ------------------------------------------------------------- */
+
+static int view_rows(void)
+{
+    return (view_card.h - 24) / (text_height(TEXT_BODY) + 2);
+}
+
+/* Split the text into lines that fit the card: at newlines, and between
+ * words where a line is too long. */
+static void view_wrap(void)
+{
+    int max_w = view_card.w - 40;
+    view_lines = 0;
+    for (int p = 0; p <= view_len && view_lines < VIEW_LINES;) {
+        int end = p;
+        while (end < view_len && view_text[end] != '\n')
+            end++;
+        int line_end = end;
+        if (line_end > p && view_text[line_end - 1] == '\r')
+            line_end--;
+        do {                                    /* one paragraph, wrapped */
+            int n = line_end - p;
+            if (text_width_n(view_text + p, n, TEXT_BODY) > max_w) {
+                int fit = 0;
+                while (fit < n && text_width_n(view_text + p, fit + 1, TEXT_BODY) <= max_w)
+                    fit++;
+                int space = fit;
+                while (space > 0 && view_text[p + space] != ' ')
+                    space--;
+                n = space > 0 ? space : (fit > 0 ? fit : 1);
+            }
+            view_line[view_lines].start = p;
+            view_line[view_lines].len = n;
+            view_lines++;
+            p += n;
+            if (p < line_end && view_text[p] == ' ')
+                p++;                            /* the space it broke at starts no line */
+        } while (p < line_end && view_lines < VIEW_LINES);
+        p = end + 1;
+    }
+}
+
+static void draw_view(void)
+{
+    const struct theme *t = theme_get();
+    gfx_fill_rect(&canvas, 0, 0, canvas.w, canvas.h, t->window_bg);
+    struct gfx_rect c = view_card;
+    gfx_fill_round_rect(&canvas, c.x, c.y, c.w, c.h, 12, t->light ? t->view_bg : gfx_mix(t->ink, t->window_bg, 20));
+    int lh = text_height(TEXT_BODY) + 2, rows = view_rows();
+    struct gfx_surface inner = gfx_sub(&canvas, (struct gfx_rect){ c.x + 20, c.y + 12, c.w - 40, c.h - 24 });
+    for (int k = 0; k < rows && view_top + k < view_lines; k++) {
+        int i = view_top + k;
+        text_draw_n(&inner, 0, k * lh, view_text + view_line[i].start, view_line[i].len, TEXT_BODY, t->fg);
+    }
+    if (view_lines > rows) {                    /* where we are in it */
+        int track = c.h - 16, thumb = track * rows / view_lines;
+        if (thumb < 16)
+            thumb = 16;
+        int y = c.y + 8 + (track - thumb) * view_top / (view_lines - rows);
+        gfx_fill_round_rect(&canvas, c.x + c.w - 10, y, 4, thumb, 2, gfx_mix(t->ink, t->window_bg, 110));
+    }
+    char info[64];
+    char *end = info + sizeof(info);
+    size_text(info, sizeof(info), (uint32_t)view_len);
+    append(info + strlen(info), view_lines == 1 ? ", 1 line" : "", end);
+    wg_label_centred(&canvas, canvas.w / 2, 20, info, WG_TEXT_DIM);
+    show((struct gfx_rect){ 0, 0, canvas.w, canvas.h });
+}
+
+static void view_scroll(int to)
+{
+    int max = view_lines - view_rows();
+    if (to > max)
+        to = max;
+    if (to < 0)
+        to = 0;
+    if (to != view_top) {
+        view_top = to;
+        draw_view();
+    }
+}
+
+/* Open a file: text up to VIEW_MAX is shown; anything else says why not. */
+static void open_file(const struct k86_dirent *e)
+{
+    if (e->size > VIEW_MAX) {
+        k86_logf("files: %s is too big to show (%u bytes)", e->name, e->size);
+        set_status("Files can show text files up to 64 KB.", 1);
+        draw_status();
+        return;
+    }
+    int n = k86_read(vol, path, e->name, view_text, VIEW_MAX);
+    if (n < 0) {
+        error_status("Reading the file", n);
+        draw_status();
+        return;
+    }
+    int odd = 0;
+    for (int i = 0; i < n; i++) {
+        unsigned char c = (unsigned char)view_text[i];
+        if (c == '\t')
+            view_text[i] = ' ';             /* tabs as spaces: the font has no tab stops */
+        else if (c < 0x20 && c != '\n' && c != '\r')
+            odd++;
+    }
+    if (odd > n / 20) {
+        k86_logf("files: %s isn't text", e->name);
+        set_status("This isn't a text file: LiteKern X can't show it yet.", 1);
+        draw_status();
+        return;
+    }
+    view_text[n] = '\0';
+    view_len = n;
+    view_name[0] = '\0';
+    append(view_name, e->name, view_name + sizeof(view_name));
+    view_card = (struct gfx_rect){ list.r.x, list.r.y, list.r.w, canvas.h - list.r.y - 16 };
+    view_wrap();
+    view_top = 0;
+    viewing = 1;
+    k86_logf("files: view %s (%d bytes, %d lines)", e->name, n, view_lines);
+    show_header();
+    draw_view();
+}
+
+static void view_key(const struct key_event *k)
+{
+    int page = view_rows() - 1;
+    switch (k->key) {
+    case KEY_UP:       view_scroll(view_top - 1); break;
+    case KEY_DOWN:     view_scroll(view_top + 1); break;
+    case KEY_PAGEUP:   view_scroll(view_top - page); break;
+    case KEY_PAGEDOWN: view_scroll(view_top + page); break;
+    case KEY_HOME:     view_scroll(0); break;
+    case KEY_END:      view_scroll(view_lines); break;
+    case KEY_BACKSPACE:
+    case KEY_ESC:
+        viewing = 0;
+        refresh(view_name);
+        break;
+    default:
+        break;
+    }
 }
 
 static void activate(int i)
@@ -381,9 +541,7 @@ static void activate(int i)
         depth++;
         k86_logf("files: open folder %s", items[i].e.name);
     } else {
-        k86_logf("files: open %s (opening files arrives later)", items[i].e.name);
-        set_status("Opening files arrives with the first apps that can show them.", 0);
-        draw_status();
+        open_file(&items[i].e);
         return;
     }
     refresh(0);
@@ -392,6 +550,11 @@ static void activate(int i)
 static void go_back(void)
 {
     char from[K86_NAME_MAX];
+    if (viewing) {
+        viewing = 0;
+        refresh(view_name);
+        return;
+    }
     if (vol < 0)
         return;
     from[0] = '\0';
@@ -525,6 +688,11 @@ static void dialog_choice(int choice)
 
 static void key(const struct key_event *k)
 {
+    if (viewing) {
+        if (k->pressed)
+            view_key(k);
+        return;
+    }
     if (dialog_for != NONE) {
         dialog_choice(wg_dialog_key(&dialog, k));
         if (dialog_for != NONE)
@@ -547,6 +715,8 @@ static void key(const struct key_event *k)
 
 static void pointer(const struct k86_event *ev)
 {
+    if (viewing)
+        return;
     struct wg_pointer p = wg_pointer_make(ev->x, ev->y, ev->buttons, ev->changed, ev->time_ms);
     if (dialog_for != NONE) {
         dialog_choice(wg_dialog_pointer(&dialog, &p));
@@ -594,6 +764,7 @@ int main(void)
         case K86_EVENT_KEY:     key(&ev.key); break;
         case K86_EVENT_POINTER: pointer(&ev); break;
         case K86_EVENT_HEADER:  if (ev.id == BACK_ID) go_back(); break;
+        case K86_EVENT_THEME:   if (viewing) draw_view(); else draw_all(); break;
         case K86_EVENT_CLOSE:   return 0;
         default:                break;
         }

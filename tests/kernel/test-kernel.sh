@@ -294,6 +294,8 @@ SCREEN="corner= has=3584e4@$FILES_ICON" \
     boot_until build/litekernx.img "$done_re" 20
 check "desktop: the dock opens Files (a ring 3 app); its close button ends it" \
     '^desktop: open Files$' \
+    '^anim: open Files, [0-9]+ frames, [0-9]+ ms, slowest frame [0-9]+ ms$' \
+    '^anim: close Files, [0-9]+ frames, [0-9]+ ms, slowest frame [0-9]+ ms$' \
     '^lkx: Files exited \(0\)$' \
     '^desktop: close Files$' \
     "^screen: corner $DESKTOP$" \
@@ -387,6 +389,14 @@ check "Calculator: exact decimals; overflow and division by zero are errors" \
     '^user: calculator: 200 - 20 = 180$' \
     '^user: calculator: 99999999999 x 999 = error$' \
     '^user: calculator: 1 / 3 = 0\.333333$' \
+    '!PANIC'
+
+# Files' text viewer: End selects the last file (the welcome text), Enter
+# opens it, Esc goes back to the folder with it still selected.
+KEYS="move:$((FILES_X - 512)),344 press:1 release sleep:1.5 end ret sleep:0.5 down esc sleep:0.3 ret" \
+KEYS_DONE='^user: files: view Welcome.* 2$|^user: files: view Welcome' boot_until build/litekernx.img "$done_re" 30
+check "Files: text files open in a viewer; Esc goes back" \
+    '^user: files: view Welcome to LiteKern X\.txt \(184 bytes, [0-9]+ lines\)$' \
     '!PANIC'
 
 KEYS="move:486,-369 press:1 release move:-68,42 press:1 release" KEYS_DONE='^power: restarting' \

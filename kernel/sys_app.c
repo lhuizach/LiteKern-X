@@ -311,9 +311,28 @@ static int wallpaper_thumbnail(uint32_t uname, uint32_t out, int w, int h)
     return err ? err : wallpaper_thumb(name, (uint32_t *)out, w, h);
 }
 
+static int fs_read(uint32_t vol, uint32_t upath, uint32_t uname, uint32_t buf, uint32_t len)
+{
+    struct fat_volume *v;
+    uint32_t dir;
+    char name[K86_NAME_MAX];
+    if (len > 1024 * 1024 || user_check(buf, len, 1))
+        return -EFAULT;
+    int err = resolve(vol, upath, &v, &dir);
+    if (!err)
+        err = user_string(name, uname, sizeof(name));
+    if (err)
+        return err;
+    struct fat_entry e;
+    if ((err = fat_find(v, dir, name, &e)))
+        return err;
+    if (e.is_dir)
+        return -EINVAL;
+    return fat_read(v, &e, 0, (void *)buf, len);
+}
+
 int sys_app(uint32_t nr, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
 {
-    (void)a5;
     switch (nr) {
     case SYS_WINDOW_OPEN:    return window_open(a1);
     case SYS_WINDOW_PRESENT: return window_present((int)a1, (int)a2, (int)a3, (int)a4);
@@ -329,6 +348,7 @@ int sys_app(uint32_t nr, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uin
     case SYS_APPEARANCE:     return appearance(a1);
     case SYS_APPEARANCE_SET: return appearance_set((int)a1, (int)a2, a3);
     case SYS_WALLPAPER_THUMB: return wallpaper_thumbnail(a1, a2, (int)a3, (int)a4);
+    case SYS_FS_READ:        return fs_read(a1, a2, a3, a4, a5);
     default:                 return -ENOSYS;
     }
 }

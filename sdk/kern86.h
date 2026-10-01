@@ -25,6 +25,16 @@ static inline int k86_call(uint32_t nr, uint32_t a, uint32_t b, uint32_t c, uint
     return ret;
 }
 
+static inline int k86_call5(uint32_t nr, uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
+{
+    int ret;
+    __asm__ volatile("int $0x80"
+                     : "=a"(ret)
+                     : "a"(nr), "b"(a), "c"(b), "d"(c), "S"(d), "D"(e)
+                     : "memory");
+    return ret;
+}
+
 static inline __attribute__((noreturn)) void k86_exit(int code)
 {
     k86_call(SYS_EXIT, (uint32_t)code, 0, 0, 0);
@@ -93,6 +103,12 @@ static inline int k86_create(int vol, const char *dir, const char *name, int is_
 static inline int k86_rename(int vol, const char *dir, const char *from, const char *to)
 {
     return k86_call(SYS_FS_RENAME, (uint32_t)vol, (uint32_t)dir, (uint32_t)from, (uint32_t)to);
+}
+
+/* Read a file from its start into buf (at most len bytes); the bytes read. */
+static inline int k86_read(int vol, const char *dir, const char *name, void *buf, uint32_t len)
+{
+    return k86_call5(SYS_FS_READ, (uint32_t)vol, (uint32_t)dir, (uint32_t)name, (uint32_t)buf, len);
 }
 
 static inline int k86_delete(int vol, const char *dir, const char *name)

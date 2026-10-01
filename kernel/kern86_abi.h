@@ -35,6 +35,8 @@
                                  * edx: wallpaper name (NULL keep, "" none). Every app window
                                  * gets K86_EVENT_THEME */
 #define SYS_WALLPAPER_THUMB 16  /* ebx: name, ecx: uint32_t * out, edx: w, esi: h (<= 256 x 160) */
+#define SYS_FS_READ         17  /* ebx: volume, ecx: folder path, edx: name, esi: buffer,
+                                 * edi: length. Reads from the start; returns the bytes read */
 
 /* --- memory -------------------------------------------------------------------- */
 #define K86_APP_BASE        0x80000000u     /* where an app's image is loaded */
