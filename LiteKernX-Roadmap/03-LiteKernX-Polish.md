@@ -22,9 +22,9 @@ Goal: take the working-but-plain GUI/apps from Phase 2 and make them feel finish
 - [x] Consistent app chrome/UI conventions across apps — every app: the header bar (title, back button where it applies, close), content on window_bg with the same margins, the shared widgets, Esc/Backspace to go back, K86_EVENT_THEME to redraw
 
 ## 4. Final stability + performance pass (~1.5 hrs)
-- [ ] Re-check boot time against `docs/BOOT-BUDGET.md`: ≤ 5 s bootloader entry → desktop, hard ceiling 10 s, BIOS POST excluded, with visible progress the whole way (the budget was ≤ 1000 ms until 2026-09-29)
-- [ ] Full run-through: boot → GUI → open apps → close apps → shutdown, no crashes
-- [ ] Fix anything found — do not carry known bugs into Phase 4
+- [ ] Re-check boot time against `docs/BOOT-BUDGET.md`: ≤ 5 s bootloader entry → desktop, hard ceiling 10 s, BIOS POST excluded, with visible progress the whole way (the budget was ≤ 1000 ms until 2026-09-29) — QEMU: `[boot] desktop t=376` (ms), checked by `make test` on every run (fails over 5000). **The EeePC number is the one that counts** (`docs/HARDWARE-TEST.md` §F)
+- [x] Full run-through: boot → GUI → open apps → close apps → shutdown, no crashes — automated in `tests/kernel/test-kernel.sh` (every dock app opened and closed, then the power menu). It ends in **Restart**: power-off needs ACPI, which stays in Phase 5 §1 (it starts with a design decision), so Shut Down is shown greyed out
+- [x] Fix anything found — do not carry known bugs into Phase 4 — found and fixed during Phase 3: the top bar invisible in the light style, an unowned window not closed with its app, the animation buffer allocated mid-run; no known bugs open in QEMU
 
 ## 5. Customisation, GNOME-style (~5 hrs, added 2026-09-29)
 A few well-chosen options, like GNOME/libadwaita, not KDE-style "configure everything". Do §1–§3 first so there's a finished look to vary.
@@ -42,10 +42,11 @@ A few well-chosen options, like GNOME/libadwaita, not KDE-style "configure every
 ---
 
 ## Phase 3 Done Criteria
+Status 2026-10-01: everything QEMU can show is done. Left: the EeePC numbers (boot time, animation frame cost, the `assets` phase) and the user's own app icons.
 - [ ] GUI and apps look and feel consistent, not just functional
 - [ ] Boot time still meets budget
 - [ ] No known bugs or unfinished visual states remain
-- [ ] At least 1-2 fully polished KERN86 apps exist
-- [ ] Style, accent, wallpaper and splash can each be changed, and every screen follows the theme
+- [x] At least 1-2 fully polished KERN86 apps exist — Files, Calculator, Settings
+- [x] Style, accent, wallpaper and splash can each be changed, and every screen follows the theme — style, accent and wallpaper in Settings; all four, splash included, at build time
 
 **Do not start Phase 4 (Publishing) until every box above is checked.**
