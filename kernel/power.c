@@ -1,6 +1,7 @@
 #include "kernel/power.h"
 #include "drivers/i8042.h"
 #include "kernel/acpi.h"
+#include "kernel/cursor.h"
 #include "kernel/io.h"
 #include "kernel/printk.h"
 #include "kernel/screen.h"
@@ -58,7 +59,7 @@ void power_off(void)
     __asm__ volatile("cli");
     if (screen_ready()) {
         struct gfx_surface *s = screen_surface();
-        screen_set_overlay(0, 0, 0, 0, 0);     /* no pointer either */
+        cursor_hide();                      /* no pointer either */
         const char *msg = "It's now safe to switch off your computer.";
         gfx_fill_rect(s, 0, 0, s->w, s->h, 0);
         text_draw(s, (s->w - text_width(msg, TEXT_HEADING)) / 2, s->h / 2 - 12, msg, TEXT_HEADING,

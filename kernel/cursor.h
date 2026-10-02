@@ -40,4 +40,7 @@ int cursor_set_shape(const char *name);
 /* Put the cursor back on the screen's overlay (after something else used it). */
 void cursor_refresh(void);
 
+/* Hide it for good (restarting, switching off). */
+void cursor_hide(void);
+
 #endif

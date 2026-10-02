@@ -1119,7 +1119,7 @@ static void fade_out(void)
     menu_open = 0;
     damage_all();
     shell_flush();
-    screen_set_overlay(0, 0, 0, 0, 0);     /* the pointer goes first */
+    cursor_hide();                          /* the pointer goes first */
     for (int i = 1; i <= 8; i++) {
         uint32_t t0 = uptime_ms();
         gfx_darken(s, 0, 0, s->w, s->h, (uint32_t)(i * 255 / 8 > 120 ? 120 : i * 255 / 8));

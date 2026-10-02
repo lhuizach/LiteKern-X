@@ -21,6 +21,8 @@
 #define QUEUE_SIZE  64
 #define CMD_SET_DEFAULTS    0xf6    /* 100 samples/s, 4 counts/mm, 1:1, stream mode; no reset */
 #define CMD_ENABLE_REPORTING 0xf4
+#define CMD_SET_RATE        0xf3    /* then the samples per second */
+#define SAMPLE_RATE         200     /* PS/2's highest: the pointer moves in smaller steps */
 
 #define PKT_SYNC     0x08   /* always set in the first byte */
 #define PKT_X_SIGN   0x10
@@ -77,7 +79,14 @@ static int mouse_init(device_t *dev)
     int err = i8042_enable_port(2);
     if (err)
         return err;
-    if (i8042_device_cmd(2, CMD_SET_DEFAULTS) || i8042_device_cmd(2, CMD_ENABLE_REPORTING)) {
+    if (i8042_device_cmd(2, CMD_SET_DEFAULTS)) {
+        i8042_disable_port(2);
+        return -ENODEV;             /* nothing answering on port 2 */
+    }
+    /* Faster reports when the device takes them (it keeps 100/s if not). */
+    if (i8042_device_cmd(2, CMD_SET_RATE) || i8042_device_cmd(2, SAMPLE_RATE))
+        i8042_device_cmd(2, CMD_SET_DEFAULTS);
+    if (i8042_device_cmd(2, CMD_ENABLE_REPORTING)) {
         i8042_disable_port(2);
         return -ENODEV;             /* nothing answering on port 2 */
     }

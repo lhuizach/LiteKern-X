@@ -71,3 +71,9 @@ int cursor_set_shape(const char *name)
     }
     return 0;
 }
+
+void cursor_hide(void)
+{
+    shape = 0;                  /* no more moves either */
+    screen_set_overlay(0, 0, 0, 0, 0);
+}

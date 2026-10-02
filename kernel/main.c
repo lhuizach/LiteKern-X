@@ -142,6 +142,19 @@ void idle_step(int busy)
         desktop_handle_events();
     }
 
+    /* The cursor goes to where this batch ends first: it then keeps up with
+     * the hand even when what the moves cause (a drag, hover highlights)
+     * takes a while to draw. */
+    if (nm > 0) {
+        int x = in.x, y = in.y;
+        for (int i = 0; i < nm / (int)sizeof(moves[0]); i++) {
+            x += moves[i].dx;
+            y += moves[i].dy;
+            x = x < 0 ? 0 : x >= in.w ? in.w - 1 : x;
+            y = y < 0 ? 0 : y >= in.h ? in.h - 1 : y;
+        }
+        cursor_move_to(x, y);
+    }
     for (int i = 0; i < nm / (int)sizeof(moves[0]); i++) {
         in.x += moves[i].dx;
         in.y += moves[i].dy;
@@ -160,8 +173,6 @@ void idle_step(int busy)
             desktop_handle_events();
         }
     }
-    if (nm > 0)
-        cursor_move_to(in.x, in.y);     /* once per batch: two small screen updates */
     desktop_handle_events();
     if (in.moved && uptime_ms() - in.last_log >= MOUSE_LOG_MS) {
         log_pointer(in.x, in.y, in.buttons, 0);

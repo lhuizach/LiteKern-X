@@ -101,19 +101,26 @@ static uint32_t copy_out_with_overlay(struct gfx_rect r)
 uint32_t screen_present(void)
 {
     uint32_t pixels = 0;
+    /* The areas with the cursor in them first, then the rest: when it jumps
+     * (a fast move), it appears in its new place before it's wiped from the
+     * old one, so the display never catches a moment with no cursor at all
+     * (it blinked out of sight in VirtualBox). */
+    for (int pass = 0; pass < 2; pass++)
     for (int i = 0; i < ndamage; i++) {
         struct gfx_rect r = damage[i];
         struct gfx_rect o = overlay_px ? gfx_rect_intersect(r, overlay) : (struct gfx_rect){ 0, 0, 0, 0 };
+        if (gfx_rect_empty(o) != pass)
+            continue;
         if (gfx_rect_empty(o)) {
             pixels += copy_out(r);
             continue;
         }
-        /* The bands of r above, below, left and right of the overlay part. */
+        pixels += copy_out_with_overlay(o);     /* the cursor first, then the bands of r
+                                                 * above, below, left and right of it */
         pixels += copy_out((struct gfx_rect){ r.x, r.y, r.w, o.y - r.y });
         pixels += copy_out((struct gfx_rect){ r.x, o.y + o.h, r.w, r.y + r.h - (o.y + o.h) });
         pixels += copy_out((struct gfx_rect){ r.x, o.y, o.x - r.x, o.h });
         pixels += copy_out((struct gfx_rect){ o.x + o.w, o.y, r.x + r.w - (o.x + o.w), o.h });
-        pixels += copy_out_with_overlay(o);
     }
     ndamage = 0;
     return pixels;

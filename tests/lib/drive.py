@@ -72,7 +72,10 @@ def main():
 
     def send(cmd):
         with lock:
-            mon.sendall(cmd.encode() + b"\n")
+            try:
+                mon.sendall(cmd.encode() + b"\n")
+            except OSError:             # the VM switched itself off
+                rec["on"] = False
 
     def drain():                        # QEMU's replies: read and dropped
         try:
