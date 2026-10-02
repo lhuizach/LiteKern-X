@@ -717,6 +717,14 @@ void wm_draw_one(struct gfx_surface *dst, int ox, int oy, struct wm_window *w, s
         gfx_fill_rect(dst, c.x + cw - ox, c.y - oy, c.w - cw, c.h, t->window_bg);
 }
 
+/* Soft, as libadwaita's: lighter in the light style, and for windows behind. */
+static uint32_t shadow_strength(const struct wm_window *w)
+{
+    if (T()->light)
+        return w == focus ? 48 : 30;
+    return w == focus ? 96 : 60;
+}
+
 void wm_draw(struct gfx_surface *dst, int ox, int oy)
 {
     struct gfx_rect view = { ox, oy, dst->w, dst->h };
@@ -726,7 +734,7 @@ void wm_draw(struct gfx_surface *dst, int ox, int oy)
             continue;
         if (!w->maximised)
             gfx_shadow(dst, w->r.x - ox, w->r.y - oy, w->r.w, w->r.h, WM_RADIUS, SHADOW,
-                       w == focus ? 150 : 90);
+                       shadow_strength(w));
         if (!gfx_rect_empty(gfx_rect_intersect(w->r, view)))
             wm_draw_one(dst, ox, oy, w, w->r);
     }
