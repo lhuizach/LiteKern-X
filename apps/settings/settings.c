@@ -154,8 +154,11 @@ static void draw(void)
     }
     text_draw(&canvas, x0, y_accent, "Accent Color", TEXT_BOLD, t->fg);
     text_draw(&canvas, x0, y_background, "Background", TEXT_BOLD, t->fg);
+    /* At the bottom, but never over the wallpapers' names above it. */
     const char *note = "Changes last until LiteKern X restarts.";
-    text_draw(&canvas, (canvas.w - text_width(note, TEXT_SMALL)) / 2, canvas.h - text_height(TEXT_SMALL) - 14,
+    int note_y = canvas.h - text_height(TEXT_SMALL) - 14;
+    int below = y_background + lh + 10 + THUMB_H + 8 + text_height(TEXT_BODY) + 12;
+    text_draw(&canvas, (canvas.w - text_width(note, TEXT_SMALL)) / 2, note_y > below ? note_y : below,
               note, TEXT_SMALL, t->fg_dim);
     (void)lh;
     k86_present(0, 0, canvas.w, canvas.h);

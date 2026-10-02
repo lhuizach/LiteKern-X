@@ -124,7 +124,7 @@ FILES_X=$(dock_x 0 2) LOG_X=$(dock_x 1 2) SHOWAPPS_X=$(dock_x 2 2) DOCK_Y=728 GR
 CALC_TILE=$(grid_x 1 "$NAPPS") SETTINGS_TILE=$(grid_x 2 "$NAPPS") LOG_TILE=$(grid_x 3 "$NAPPS")
 FILES_ICON="$((FILES_X - 30)),698,$((FILES_X + 30)),758"      # the folder icon in the dock
 FILES_CLOSE=$(win_close 760 500) LOG_CLOSE=$(win_close 760 480)
-CALC_CLOSE=$(win_close 420 548) SETTINGS_CLOSE=$(win_close 944 524)
+CALC_CLOSE=$(win_close 420 548) SETTINGS_CLOSE=$(win_close 944 552)
 
 # Pointer paths: absolute positions turned into the relative moves QEMU sends.
 #   path; go X Y; click; key a b; ... then KEYS="$P"
@@ -448,15 +448,15 @@ check "windows: over a maximised window, the bottom edge brings the dock back" \
     '!PANIC'
 
 # Settings (Appearance), from the app menu, laid out like
-# apps/settings/settings.c in its 944x524 window (content from 41,184): the
-# Light card (y 232-352), Right = the next accent, the "None" background
-# (y 524-618), first in the row of wallpapers. The window must turn light at
+# apps/settings/settings.c in its 944x552 window (content from 41,170): the
+# Light card (y 218-338), Right = the next accent, the "None" background
+# (y 510-604), first in the row of wallpapers. The window must turn light at
 # once (window_bg fafafb), and the kernel logs each change.
 nwall=$(ls assets/wallpapers/*.png | grep -vc -- '-light\.png$')
 row_w=$(( (nwall + 1) * 160 + nwall * 24 )); [ "$row_w" -lt 424 ] && row_w=424
 sx0=$(( 41 + (942 - row_w) / 2 )); light_x=$((sx0 + 324)); none_x=$((sx0 + 80))
 path; go "$SHOWAPPS_X" "$DOCK_Y"; click; go "$SETTINGS_TILE" "$GRID_Y"; click; add sleep:1.5
-go "$light_x" 292; click; add sleep:0.5 right sleep:0.3; go "$none_x" 571; click; add sleep:0.5
+go "$light_x" 278; click; add sleep:0.5 right sleep:0.3; go "$none_x" 557; click; add sleep:0.5
 KEYS="$P" KEYS_DONE='^appearance: light, accent teal, wallpaper none' SCREEN="has=fafafb@60,300,240,600" \
     boot_until build/litekernx.img "$done_re" 30
 check "Settings: style, accent and background change at once" \

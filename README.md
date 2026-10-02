@@ -1,86 +1,87 @@
-# LiteKern X
+<p align="center">
+  <img src="assets/logo.svg" width="96" alt="LiteKern X logo">
+</p>
 
-A from-scratch 32-bit x86 OS for the ASUS EeePC 1000HE (Intel Atom N270). It's a clean-slate rewrite of LiteKern v1 that keeps the KERN86 app model (`.lkx`, `kerns.json`, `kern86.h`).
+<h1 align="center">LiteKern X</h1>
 
-**Status: Phase 1 (Base) is complete** and verified on the real EeePC 1000HE (2026-09-29): it boots to ready in 179 ms (the Phase 1 target was 1000 ms; the budget is now ≤ 5 s to the desktop), at the panel's native 1024×600. Next is Phase 2 (GUI). The bootloader is stage 1 + stage 2. The C kernel:
-- sets up its GDT/IDT/TSS and calibrates the TSC
-- turns on paging: null pointers fault, kernel code is read-only, user space is 2–3 GiB
-- reports the memory map, display mode and every PCI device
-- binds drivers through a fixed driver interface: the COM1 UART, the VBE framebuffer display, and the PS/2 keyboard and touchpad (both interrupt-driven)
-- after boot, idles with interrupts on and logs key presses, clicks and pointer movement on screen. PgUp/PgDn/Home/End scroll back through the log (Fn + arrows on the EeePC).
-- shows its log on screen (so the EeePC, which has no serial port, can be debugged)
-- can run a program in ring 3 with `int 0x80` system calls; a fault in the program kills only the program
-- logs per-phase boot times and reaches "ready"
+<p align="center">
+  A small operating system, written from scratch, for the ASUS Eee PC 1000HE netbook.
+</p>
 
-None of this has been verified on the real EeePC yet.
+<p align="center">
+  <img src="docs/screenshots/tour.gif" width="640" alt="LiteKern X in action: opening apps, minimising and restoring a window">
+</p>
 
-**What you see:** the kernel log appears on screen, in the video BIOS font, as soon as the display driver is up. It includes everything logged since boot. The background shows the outcome: **navy means ready, dark red means panic**, with the fault and registers on screen. The same log goes to COM1 (the VM's serial log). If there's no font or no display, the screen is just filled with the status colour.
+## What is it?
 
-- Plan: [`LiteKernX-Roadmap/`](LiteKernX-Roadmap/). The phase files there are the source of truth.
-- [Non-Goals](docs/NON-GOALS.md)
-- [Boot-time budget](docs/BOOT-BUDGET.md): ≤ 5 s from bootloader entry to the desktop, with visible progress throughout (hard ceiling 10 s)
+LiteKern X is a complete operating system for one 2009 netbook, the ASUS Eee PC 1000HE. There's no Linux or Windows underneath: everything, from the code that starts the machine to the windows on the screen, is written for this project.
 
-## Layout
-```
-LiteKernX-Roadmap/   the plan, phase by phase
-boot/                custom bootloader (stage 1 MBR, stage 2) + boot_info layout — see docs/BOOT-PROTOCOL.md
-kernel/              C kernel: entry, GDT/IDT/TSS, exceptions, TSC timing, memory map,
-                     frame allocator + paging, PCI scan, driver layer (driver.h),
-                     ring 3 + syscalls (user.c, syscall.h), IRQs (irq.c), on-screen
-                     console, log
-drivers/             drivers behind the driver_t interface (uart.c, vbefb.c, kbd.c, mouse.c; i8042.c
-                     is the shared PS/2 controller code) + builtin.c list
-docs/                non-goals, boot budget, boot protocol
-tests/boot/          bootloader tests + the stage 2 / kernel stubs they boot
-tests/kernel/        kernel tests (boot log, memory map, paging, PCI incl. bridges, driver
-                     self-test, ring 3 self-test + test programs in user/, fault tests)
-vm/qemu.sh           QEMU dev VM configured to approximate the EeePC 1000HE
-vm/vbox.sh           VirtualBox dev VM (same profile + a 1024x600 mode)
-vm/smoke/            boot-sector smoke test for the VM itself
-tools/setup-wsl.sh   installs the toolchain + QEMU in WSL Ubuntu
-```
-Other source directories get created when the phase that needs them starts, not before.
+It boots in about a second to a clean, modern desktop with a dock, an app menu, and windows you can move around, like on Windows or GNOME.
 
-## Setup (Windows + WSL Ubuntu)
-Run these once, from PowerShell in this folder:
-```
-wsl sudo bash tools/setup-wsl.sh
-wsl make check-tools
-```
+## Screenshots
 
-## Dev VM
-| Command | What it does |
-|---|---|
-| `wsl make` | Builds `build/litekernx.img` (stage 1 + stage 2 + kernel) |
-| `wsl make test` | Runs all tests: the VM smoke test, the bootloader tests (good boot and every failure path) and the kernel tests |
-| `wsl make smoke` | Boots the smoke image headless and checks serial output + exit code |
-| `wsl make smoke-gui` | Same image in a QEMU window (shown through WSLg) |
-| `wsl make run` | Builds and boots `build/litekernx.img` in a window |
-| `wsl make usb` | Builds the two images for the real EeePC into `build/usb/` (see [docs/HARDWARE-TEST.md](docs/HARDWARE-TEST.md)) |
-| `wsl make debug` | Same as `run`, paused, with a gdb stub on `:1234`; interrupts and resets logged to `build/qemu-debug.log` |
+<table>
+  <tr>
+    <td><img src="docs/screenshots/desktop.png" alt="The desktop"></td>
+    <td><img src="docs/screenshots/windows.png" alt="Files and Calculator open side by side"></td>
+  </tr>
+  <tr>
+    <td align="center">The desktop</td>
+    <td align="center">Two apps at once</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/appmenu.png" alt="The app menu"></td>
+    <td><img src="docs/screenshots/settings-light.png" alt="Settings in the light style"></td>
+  </tr>
+  <tr>
+    <td align="center">The app menu</td>
+    <td align="center">Light style, in Settings</td>
+  </tr>
+</table>
 
-### VirtualBox VM
-There's a second dev VM, `LiteKern X`, in your Windows VirtualBox. It has the same EeePC-like profile as the QEMU VM, plus a **1024×600** VBE mode like the real panel, which QEMU can't provide. It's driven from WSL by [`vm/vbox.sh`](vm/vbox.sh):
+## What it can do
 
-| Command | What it does |
-|---|---|
-| `wsl make vbox-create` | Creates and registers the VM (once) |
-| `wsl make vbox` | Rebuilds, copies the image to the VM's disk, and boots it in a window |
-| `wsl make vbox-test` | Same, but headless: waits for `[boot] ready`, saves `build/vbox/screen.png`, powers off |
+- **Starts fast:** about a second from the boot menu to the desktop.
+- **Real windows:** move them, resize them, minimise, maximise or snap them to half the screen, with several apps open at once.
+- **A dock and an app menu:** favourites stay in the dock; open apps show a dot underneath.
+- **Apps:**
+  - **Files** browses the USB stick, makes folders and files, renames and deletes them, and opens text files.
+  - **Calculator** does exact decimal sums.
+  - **Settings** switches between dark and light, six accent colours and five backgrounds.
+  - **Log** shows what the system is doing.
+- **Stays up:** if an app crashes or freezes, only that app closes.
+- **Shut down and restart** from the power menu.
 
-The VM's boot log (COM1) goes to `build/vbox/serial.log`. To run a self-test image in VirtualBox instead of the normal one:
-```
-wsl make test
-wsl IMAGE=build/test-user/litekernx.img "WAIT_FOR=^selftest: user" bash vm/vbox.sh test
-```
-To type into the VM during the test (here "Hi!", waiting until the `!` shows up in the log):
-```
-wsl "WAIT_FOR=^kbd: ready" "TYPE=Hi!" "TYPED=kbd: key 0x002 .!." bash vm/vbox.sh test
-```
- `wsl bash vm/vbox.sh stop|status|destroy` manage the VM. The VM has to be powered off before its disk can be updated.
+## Try it
 
-### Serial output
-In the QEMU VM, serial output (COM1) always goes to the terminal and to `build/serial.log`. See the header of [`vm/qemu.sh`](vm/qemu.sh) for how the VM differs from the real EeePC. **VM timings don't count toward the boot budget.**
+There's no download yet; the first release is coming (see Status). For now you build it yourself on Windows, using WSL:
 
-## Toolchain
-Host `gcc -m32 -ffreestanding -fno-pie -fno-stack-protector -nostdlib`, GNU `ld` and `nasm`, all in WSL. A proper `i686-elf` cross-compiler is a Non-Goal until host gcc causes real problems.
+1. Install [WSL](https://learn.microsoft.com/windows/wsl/install) with Ubuntu.
+2. In this folder, open PowerShell and run `wsl sudo bash tools/setup-wsl.sh` once.
+3. Run `wsl make run`. LiteKern X starts in a window.
+
+To run it on a real Eee PC 1000HE, see [Testing on the Eee PC](docs/HARDWARE-TEST.md).
+
+## Status
+
+LiteKern X is a work in progress.
+
+- **Done:**
+  - Booting on the real Eee PC.
+  - The desktop, windows and apps.
+  - Themes and wallpapers.
+- **Next:**
+  - A full test on the real Eee PC.
+  - The first release: a download, a website and documentation.
+- **Later:**
+  - Battery status, sound and USB.
+
+The full plan is in [`LiteKernX-Roadmap/`](LiteKernX-Roadmap/).
+
+## For developers
+
+- [Developing LiteKern X](docs/DEVELOPING.md): building, testing, the VMs and where everything is
+- [Making an app](docs/APPS.md): write your own app for LiteKern X
+- [The roadmap](LiteKernX-Roadmap/): what's done and what's next
+
+LiteKern X is a clean-slate rewrite of LiteKern v1, keeping its app model (KERN86).
