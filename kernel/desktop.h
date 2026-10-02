@@ -3,7 +3,7 @@
  *
  *   - the top bar, always: Home (shows the desktop: minimises every window)
  *     and the focused app's name on the left, the day, date and time in the
- *     middle, a power menu (Restart; Shut Down waits for ACPI in Phase 5) on
+ *     middle, a power menu (Restart; Shut Down, through ACPI: kernel/acpi.h) on
  *     the right
  *   - the wallpaper, with the apps' windows floating over it (kernel/wm.h)
  *   - the dock: the favourite apps (pinned), then a line and any other app

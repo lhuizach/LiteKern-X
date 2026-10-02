@@ -709,12 +709,13 @@ static void draw_menu(void)
     gfx_fill_round_rect(VS, VX(m.x), VY(m.y), m.w, m.h, 12, SHELL_POPOVER);
     for (int k = 0; k < 2; k++) {
         struct gfx_rect r = menu_item_rect(k);
-        int disabled = k == 1;                      /* Shut Down needs ACPI (Phase 5) */
-        uint32_t bg = disabled ? SHELL_POPOVER : hit_bg((struct hit){ H_RESTART, 0 }, SHELL_POPOVER);
+        int disabled = k == 1 && !power_can_off();  /* no ACPI found */
+        uint32_t bg = disabled ? SHELL_POPOVER
+                               : hit_bg((struct hit){ k ? H_SHUTDOWN : H_RESTART, 0 }, SHELL_POPOVER);
         if (bg != SHELL_POPOVER)
             gfx_fill_round_rect(VS, VX(r.x), VY(r.y), r.w, r.h, 6, bg);
         text_draw(VS, VX(r.x + 12), VY(r.y + (r.h - text_height(TEXT_BODY)) / 2),
-                  disabled ? "Shut Down" : "Restart", TEXT_BODY,
+                  k ? "Shut Down" : "Restart", TEXT_BODY,
                   disabled ? gfx_mix(SHELL_FG, SHELL_POPOVER, 110) : SHELL_FG);
     }
 }
@@ -1111,6 +1112,27 @@ static void dock_click(int i)
         wm_focus(w);
 }
 
+/* Before restarting or switching off: the screen fades to black. */
+static void fade_out(void)
+{
+    struct gfx_surface *s = S();
+    menu_open = 0;
+    damage_all();
+    shell_flush();
+    screen_set_overlay(0, 0, 0, 0, 0);     /* the pointer goes first */
+    for (int i = 1; i <= 8; i++) {
+        uint32_t t0 = uptime_ms();
+        gfx_darken(s, 0, 0, s->w, s->h, (uint32_t)(i * 255 / 8 > 120 ? 120 : i * 255 / 8));
+        screen_damage_all();
+        screen_present();
+        while (uptime_ms() - t0 < (uint32_t)(30 * ANIM_SLOW))
+            __asm__ volatile("pause");
+    }
+    gfx_fill_rect(s, 0, 0, s->w, s->h, 0);
+    screen_damage_all();
+    screen_present();
+}
+
 static void activate(struct hit h)
 {
     switch (h.kind) {
@@ -1128,7 +1150,14 @@ static void activate(struct hit h)
         break;
     case H_RESTART:
         kprintf("shell: restart\n");
+        fade_out();
         power_restart();
+    case H_SHUTDOWN:
+        if (!power_can_off())
+            break;
+        kprintf("shell: shut down\n");
+        fade_out();
+        power_off();
     case H_TILE:
         set_grid(0);
         shell_flush();

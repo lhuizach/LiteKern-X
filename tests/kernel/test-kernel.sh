@@ -84,6 +84,14 @@ boot_until() {
         done
         sleep 0.2
     fi
+    # Did the guest switch the VM off by itself (ACPI)? Give it 3 s.
+    qemu_off=0
+    if [ -n "${WAIT_OFF:-}" ]; then
+        for ((i = 0; i < 30; i++)); do
+            kill -0 "$pid" 2>/dev/null || { qemu_off=1; break; }
+            sleep 0.1
+        done
+    fi
     if [ -n "${SCREEN:-}" ]; then
         mkdir -p build/test-screens
         python3 tests/lib/qemu_monitor.py shot "$sock" "$shot" &&
@@ -487,22 +495,27 @@ check "Files: text files open in a viewer; Esc goes back" \
     '!PANIC'
 
 # The run-through (Phase 3 section 4): every app opened (the dock, or the app
-# menu) and closed with its close button, one after another, then Restart
-# from the power menu. Nothing may crash; every app must exit cleanly.
+# menu) and closed with its close button, one after another, then Shut Down
+# from the power menu (Restart 844-1012 x 40-74, Shut Down below it). Nothing
+# may crash; every app must exit cleanly; the VM must switch itself off.
 path
 go "$FILES_X" "$DOCK_Y"; click; add sleep:1.5; go $FILES_CLOSE; click; add sleep:1
 go "$LOG_X" "$DOCK_Y"; click; add sleep:1.5; go $LOG_CLOSE; click; add sleep:1
 go "$SHOWAPPS_X" "$DOCK_Y"; click; go "$CALC_TILE" "$GRID_Y"; click; add sleep:1.5; go $CALC_CLOSE; click; add sleep:1
 go "$SHOWAPPS_X" "$DOCK_Y"; click; go "$SETTINGS_TILE" "$GRID_Y"; click; add sleep:1.5; go $SETTINGS_CLOSE; click; add sleep:1
-go 998 15; click; go 930 57; click
-KEYS="$P" KEYS_DONE='^power: restarting' boot_until build/litekernx.img "$done_re" 60
-check "run-through: open and close every app, then restart" \
+go 998 15; click; go 930 91; click
+WAIT_OFF=1 KEYS="$P" KEYS_DONE='^power: switching off' boot_until build/litekernx.img "$done_re" 60
+[ "$qemu_off" = 1 ] && out+=$'\n'"vm: switched off" || out+=$'\n'"vm: STILL ON"
+check "run-through: open and close every app, then shut down (ACPI)" \
+    '^acpi: BOCHS, RSDP rev 0 at 0x[0-9a-f]+; PM1a_CNT 0x604, PM1b_CNT 0x0; _S5 SLP_TYP 0/0$' \
     '^lkx: Files exited \(0\)$' \
     '^lkx: Calculator exited \(0\)$' \
     '^lkx: Settings exited \(0\)$' \
     '^desktop: close Log$' \
-    '^power: restarting$' \
-    '!PANIC|crashed|stopped responding'
+    '^shell: shut down$' \
+    '^power: switching off \(ACPI S5\)$' \
+    '^vm: switched off$' \
+    '!PANIC|crashed|stopped responding|power: still on'
 
 KEYS="move:486,-369 press:1 release move:-68,42 press:1 release" KEYS_DONE='^power: restarting' \
     boot_until build/litekernx.img "$done_re" 20

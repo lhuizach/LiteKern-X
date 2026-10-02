@@ -1,6 +1,7 @@
 /* LiteKern X — kernel entry point (called from kernel/entry.asm). */
 #include "boot/bootinfo.h"
 #include "drivers/builtin.h"
+#include "kernel/acpi.h"
 #include "kernel/apps.h"
 #include "kernel/desktop.h"
 #include "kernel/console.h"
@@ -316,6 +317,7 @@ void kmain(uint32_t magic, const struct boot_info *handoff)
     *(volatile uint8_t *)(uintptr_t)kmain = 0xcc;
 #endif
 
+    acpi_init();            /* power-off: the firmware's tables (before any app's address space) */
     storage_init();         /* the disks Files can open (reads each partition table) */
     splash_progress(45);
     idle(bi);

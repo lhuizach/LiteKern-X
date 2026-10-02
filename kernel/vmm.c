@@ -69,6 +69,20 @@ void vmm_init(const struct boot_info *bi)
         : "eax", "memory");
 }
 
+int vmm_map_firmware(uint32_t phys, uint32_t len)
+{
+    if (!len || phys + len < phys)
+        return -EINVAL;
+    for (uint32_t a = phys & ~(MIB4 - 1); a < phys + len && a >= (phys & ~(MIB4 - 1)); a += MIB4) {
+        if (a >= USER_BASE && a < USER_TOP)
+            return -EINVAL;                     /* never over user space */
+        if (!kernel_pd[PD_INDEX(a)])
+            kernel_pd[PD_INDEX(a)] = a | PTE_PRESENT | PDE_4MIB;    /* read-only */
+    }
+    reload_cr3();
+    return 0;
+}
+
 static int is_user_page(uint32_t virt)
 {
     return virt >= USER_BASE && virt < USER_TOP && !(virt % PAGE_SIZE);

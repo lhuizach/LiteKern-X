@@ -50,6 +50,11 @@ void vmm_space_switch(uint32_t pd);
 uint32_t vmm_space_current(void);
 void vmm_space_destroy(uint32_t pd);
 
+/* Identity-map [phys, phys + len) read-only for the kernel if it isn't
+ * already (firmware tables above RAM, e.g. ACPI's). At boot only: address
+ * spaces made earlier don't get it. 0 or -EINVAL (it would cover user space). */
+int vmm_map_firmware(uint32_t phys, uint32_t len);
+
 void vmm_report(void);
 
 #endif

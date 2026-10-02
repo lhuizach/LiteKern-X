@@ -96,6 +96,8 @@ If Files or the log shows a `boot0: BIOS read ... failed (AH=0x..)` line, photo 
 | Text | Smooth, proportional text everywhere except the Log app |
 | Settings | Dark ↔ Light, the accent colours and the four wallpapers all change at once, and stay changed when you go back to the desktop |
 | Calculator and Files | Work with the touchpad and the keyboard. In Files, double-click `Welcome to LiteKern X.txt` to read it |
+| Windows | Two apps open at once; dragging a window by its title bar keeps up with the touchpad; minimise, maximise and the dock's dots behave as in the videos |
+| Shut Down | The power menu's Shut Down switches the EeePC off by itself (the Log app's `acpi:` line says what it found; photo it if it doesn't) |
 
 ## 5. Send back
 The photos (or just the answers to the tables). I'll tick the roadmap boxes, fill in the measurements table in `docs/BOOT-BUDGET.md`, and fix anything the real hardware disagrees with.

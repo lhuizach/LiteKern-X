@@ -23,7 +23,7 @@ Goal: take the working-but-plain GUI/apps from Phase 2 and make them feel finish
 
 ## 4. Final stability + performance pass (~1.5 hrs)
 - [ ] Re-check boot time against `docs/BOOT-BUDGET.md`: ≤ 5 s bootloader entry → desktop, hard ceiling 10 s, BIOS POST excluded, with visible progress the whole way (the budget was ≤ 1000 ms until 2026-09-29) — QEMU: `[boot] desktop t=376` (ms), checked by `make test` on every run (fails over 5000). **The EeePC number is the one that counts** (`docs/HARDWARE-TEST.md` §F)
-- [x] Full run-through: boot → GUI → open apps → close apps → shutdown, no crashes — automated in `tests/kernel/test-kernel.sh` (every dock app opened and closed, then the power menu). It ends in **Restart**: power-off needs ACPI, which stays in Phase 5 §1 (it starts with a design decision), so Shut Down is shown greyed out
+- [x] Full run-through: boot → GUI → open apps → close apps → shutdown, no crashes — automated in `tests/kernel/test-kernel.sh` (every dock app opened and closed, then the power menu). It ends with **Shut Down**: ACPI power-off was brought forward from Phase 5 §1 on 2026-10-02 (the user's request), and the test checks the VM switches itself off
 - [x] Fix anything found — do not carry known bugs into Phase 4 — found and fixed during Phase 3: the top bar invisible in the light style, an unowned window not closed with its app, the animation buffer allocated mid-run; no known bugs open in QEMU
 
 ## 5. Customisation, GNOME-style (~5 hrs, added 2026-09-29)

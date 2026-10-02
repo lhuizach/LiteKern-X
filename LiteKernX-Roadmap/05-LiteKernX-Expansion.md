@@ -7,11 +7,11 @@ Goal: the things removed from `docs/NON-GOALS.md` on 2026-09-29 that are too big
 ---
 
 ## 1. ACPI power management
-- [ ] Clean shutdown and reboot through ACPI (not just "hold the power button")
+- [ ] Clean shutdown and reboot through ACPI (not just "hold the power button") — **shutdown done early (2026-10-02, the user's request)**: `kernel/acpi.c` finds RSDP -> RSDT -> FADT -> DSDT and reads `_S5` with a minimal AML reader (one package of numbers), then writes SLP_TYP | SLP_EN to PM1a/PM1b; works in QEMU (tested) and VirtualBox. Still to do here: check it on the EeePC, and reboot through the FADT reset register (restart still uses the keyboard controller)
 - [ ] Battery status: charge level and charging state, shown in the shell
 - [ ] Backlight brightness and the Fn keys that control it
 - [ ] Suspend to RAM (resume must restore the display mode and PS/2 devices)
-- [ ] Decide first: a minimal hand-written AML reader for the EeePC's tables, or a ported interpreter (ACPICA)? This decides the size of the whole section
+- [ ] Decide first: a minimal hand-written AML reader for the EeePC's tables, or a ported interpreter (ACPICA)? This decides the size of the whole section — for shutdown the minimal reader was enough; battery and suspend need methods (_BST, _PTS), so the question stays open for them
 
 ## 2. Audio
 - [ ] Intel HD Audio controller driver, through the driver layer
