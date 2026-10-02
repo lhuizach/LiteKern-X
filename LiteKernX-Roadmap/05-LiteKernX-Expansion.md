@@ -42,6 +42,32 @@ Goal: the things removed from `docs/NON-GOALS.md` on 2026-09-29 that are too big
 - [ ] **The EeePC's Atom N270 is 32-bit only and can't run 64-bit code.** This only makes sense together with new target hardware, and "hardware other than the EeePC" is still a non-goal. Decide the hardware first, then move it off `docs/NON-GOALS.md`
 - [ ] 64-bit paging, GDT/IDT, syscall entry, and a 64-bit KERN86 ABI
 
+## 8. Extensions (planned 2026-10-02, the user's request)
+Customise the UI with code you can edit inside LiteKern X, AwesomeWM-style: **extensions written in Lua**, run by the OS, reloaded without a rebuild or a reboot. It needs nothing from the other sections, so it can be the first one done in this phase. Decided with the user:
+- **Language: Lua** (small, embeddable, made for this), not C compiled in the OS (that would mean porting a compiler and risking unbootable kernels) nor JavaScript (a much bigger engine)
+- **Scope of v1: add and tweak**: extensions add to and adjust the built-in UI. Rewriting the top bar and dock themselves in Lua ("the whole shell is code you can edit") is a possible later step, once the API has proven itself
+- **Preinstalled, no online store**: the official extensions ship on the stick, switched off; an online catalog would need §4 first and isn't planned
+- **One app to find and edit them**, plus a general Text Editor for any text file
+
+Foundations (apps can't do these yet):
+- [ ] Writing files: FAT32 file writes and a SYS_FS_WRITE call (apps can create, rename, delete and read, but not write contents)
+- [ ] Bigger apps: memory that grows (an sbrk-style call, `malloc` in the SDK) beyond today's fixed 1 MiB image, and a small C library in the SDK (strings, formatted output, file I/O over the calls)
+- [ ] Floating point for apps (Lua needs it): the kernel saves and restores each app's FPU state (FXSAVE) when it switches apps, which it only does at system calls. The kernel itself stays integer-only
+- [ ] Lua 5.4 ported as an SDK library (MIT licence, noted next to it like the font's)
+
+The pieces:
+- [ ] **Text Editor** app: open any text file from Files, type, scroll, select, undo, find, Ctrl+S
+- [ ] **Extension host**: one ring 3 process runs every enabled extension, isolated like any app. An extension that errors is switched off and the Log app shows the file and line; if the host crashes or hangs (the watchdog), the desktop carries on with the built-in UI. **Safe mode**: holding Shift at boot loads no extensions
+- [ ] **Shell API v1** for Lua: top bar widgets (add, hide the built-in ones), the dock (pins, order, click behaviour, size), desktop widgets, keyboard shortcuts, window rules (placement, size, snapping), colours and shapes, animation speed and bounce, and events (app opened/closed, focus changed, a minute passed, boot finished). Extensions draw with the same gfx/text/widget calls the apps use. Documented in `docs/EXTENSIONS.md`
+- [ ] An extension is a folder, `/Extensions/<name>/`, with `extension.json` (name, version, description, entry, what it uses) and its Lua files
+- [ ] **Extensions app**:
+  - a list of every extension with on/off switches (applied at once), descriptions, what each one uses, and its last error
+  - **+ New** from working templates
+  - **Edit** opens the code in the Text Editor's view, with line numbers, Lua colouring, the error line highlighted, and **Save & Reload**
+  - preinstalled ones can be edited freely, with **Reset to original**
+- [ ] **Starter extensions**, preinstalled and off: Seconds Clock, Window Snapper (keyboard snapping), System Monitor (memory, apps open), Sticky Notes, Dock Tweaks, Theme Switcher. They double as examples
+- [ ] Tests: the API from a test extension; a broken extension (a syntax error, a runtime error, an endless loop) never takes the desktop down; safe mode
+
 ---
 
 ## Phase 5 Done Criteria
