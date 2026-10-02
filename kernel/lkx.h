@@ -12,12 +12,27 @@
 #define LKX_LKX_H
 
 #include "kernel/apps.h"
+#include "kernel/idt.h"
+#include "kernel/wm.h"
 
 /* Add every app found in the ramdisk to the app list (kernel/apps.h). */
 void lkx_register_all(void);
 
-/* Load and run the app (its window is already open) until it exits or is
- * stopped. Logs how it ended. */
-void lkx_run(const struct app *a);
+/* Start the app in its window (already open). It runs whenever it has
+ * something to do (lkx_schedule); when it ends, how is logged and the shell
+ * is told (desktop_app_ended). 0 or a negative errno. */
+int lkx_start(const struct app *a, struct wm_window *w);
+
+/* Give every app that has something to do a turn: one just started, or one
+ * waiting in SYS_WAIT_EVENT whose window has an event. Each runs until it
+ * waits again (or ends). Returns how many ran. */
+int lkx_schedule(void);
+
+/* The running app's window (inside its system calls), or NULL. */
+struct wm_window *lkx_window(void);
+/* SYS_WAIT_EVENT: the next event now, or sleep until there is one. */
+void lkx_wait_event(struct int_frame *f);
+/* Is the app running? */
+int lkx_running(const struct app *a);
 
 #endif

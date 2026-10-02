@@ -13,6 +13,7 @@ extern char __kernel_start[], __ro_end[];
 static uint32_t kernel_pd[1024] __attribute__((aligned(4096)));
 static uint32_t low_pt[1024] __attribute__((aligned(4096)));    /* 0 – 4 MiB */
 static uint32_t fb_start, fb_end;
+static uint32_t *cur_pd = kernel_pd;    /* the address space in CR3 */
 
 static void invlpg(uint32_t virt)
 {
@@ -73,11 +74,11 @@ static int is_user_page(uint32_t virt)
     return virt >= USER_BASE && virt < USER_TOP && !(virt % PAGE_SIZE);
 }
 
-int vmm_map_user(uint32_t virt, uint32_t phys, int writable)
+int vmm_map_user(uint32_t virt, uint32_t phys, int flags)
 {
     if (!is_user_page(virt) || phys % PAGE_SIZE)
         return -EINVAL;
-    uint32_t *pde = &kernel_pd[PD_INDEX(virt)];
+    uint32_t *pde = &cur_pd[PD_INDEX(virt)];
     if (!(*pde & PTE_PRESENT)) {
         uint32_t pt = pmm_alloc();
         if (!pt)
@@ -87,33 +88,73 @@ int vmm_map_user(uint32_t virt, uint32_t phys, int writable)
     uint32_t *pt = (uint32_t *)(*pde & ~0xfffu);
     if (pt[PT_INDEX(virt)] & PTE_PRESENT)
         return -EINVAL;
-    pt[PT_INDEX(virt)] = phys | PTE_PRESENT | PTE_USER | (writable ? PTE_WRITE : 0);
+    pt[PT_INDEX(virt)] = phys | PTE_PRESENT | PTE_USER | (flags & (PTE_WRITE | PTE_SHARED));
     invlpg(virt);
     return 0;
 }
 
 uint32_t vmm_lookup(uint32_t virt)
 {
-    uint32_t pde = kernel_pd[PD_INDEX(virt)];
+    uint32_t pde = cur_pd[PD_INDEX(virt)];
     if (!(pde & PTE_PRESENT) || (pde & PDE_4MIB))
         return pde;
     uint32_t pte = ((uint32_t *)(pde & ~0xfffu))[PT_INDEX(virt)];
     return (pte & PTE_PRESENT) ? pte : 0;
 }
 
-void vmm_user_teardown(void)
+/* Free the user half of `pd`: its page tables and every frame it owns
+ * (PTE_SHARED frames belong to someone else). */
+static void free_user_half(uint32_t *pd)
 {
     for (uint32_t i = PD_INDEX(USER_BASE); i < PD_INDEX(USER_TOP); i++) {
-        if (!(kernel_pd[i] & PTE_PRESENT))
+        if (!(pd[i] & PTE_PRESENT))
             continue;
-        uint32_t *pt = (uint32_t *)(kernel_pd[i] & ~0xfffu);
+        uint32_t *pt = (uint32_t *)(pd[i] & ~0xfffu);
         for (uint32_t j = 0; j < 1024; j++)
-            if (pt[j] & PTE_PRESENT)
+            if ((pt[j] & PTE_PRESENT) && !(pt[j] & PTE_SHARED))
                 pmm_free(pt[j] & ~0xfffu);
         pmm_free((uint32_t)pt);
-        kernel_pd[i] = 0;
+        pd[i] = 0;
     }
+}
+
+void vmm_user_teardown(void)
+{
+    free_user_half(cur_pd);
     reload_cr3();
+}
+
+uint32_t vmm_space_create(void)
+{
+    uint32_t *pd = (uint32_t *)pmm_alloc();     /* zeroed: no user pages yet */
+    if (!pd)
+        return 0;
+    for (uint32_t i = 0; i < 1024; i++)
+        if (i < PD_INDEX(USER_BASE) || i >= PD_INDEX(USER_TOP))
+            pd[i] = kernel_pd[i];               /* the kernel's half, shared */
+    return (uint32_t)pd;
+}
+
+void vmm_space_switch(uint32_t pd)
+{
+    uint32_t *next = pd ? (uint32_t *)pd : kernel_pd;
+    if (next == cur_pd)
+        return;
+    cur_pd = next;
+    __asm__ volatile("mov %0, %%cr3" : : "r"(cur_pd) : "memory");
+}
+
+uint32_t vmm_space_current(void)
+{
+    return cur_pd == kernel_pd ? 0 : (uint32_t)cur_pd;
+}
+
+void vmm_space_destroy(uint32_t pd)
+{
+    if (!pd || (uint32_t *)pd == cur_pd)
+        panic("vmm: destroying the address space in use");
+    free_user_half((uint32_t *)pd);
+    pmm_free(pd);
 }
 
 void vmm_report(void)

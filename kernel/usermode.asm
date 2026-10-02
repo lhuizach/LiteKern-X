@@ -1,52 +1,42 @@
-; LiteKern X — entering and leaving ring 3 (Phase 1 §5).
+; LiteKern X — entering and leaving ring 3 (Phase 1 §5; resumable since
+; Phase 3 §6).
 ;
-;   int user_run(uint32_t entry, uint32_t user_esp)
-;       Saves the kernel's callee-saved state, drops to ring 3 at `entry` with
-;       the given stack, and returns only when user_return() is called
-;       (from the exit syscall, or when the program is killed by a fault).
+;   int user_enter(const struct int_frame *f)
+;       Saves the kernel's callee-saved state and continues the program from
+;       the registers in *f (a new program: its entry point; a yielded one:
+;       just after its system call). Returns only when user_return() is
+;       called (exit, a fault, or a yield).
 ;
 ;   void user_return(int code)   -- noreturn; ring 0 only
-;       Abandons the trap stack and resumes user_run's caller with `code`.
+;       Abandons the trap stack and resumes user_enter's caller with `code`.
 ;
 ; Traps from ring 3 run on trap_stack (TSS.esp0), never on the kernel stack
-; user_run was called from, so a trap can't overwrite live kernel frames.
+; user_enter was called from, so a trap can't overwrite live kernel frames.
+; Nothing is left on the trap stack between runs, so one serves every program.
 
 bits 32
 
-global user_run, user_return, trap_stack_top
+global user_enter, user_return, trap_stack_top
 
-USER_CS equ 0x18 | 3
-USER_DS equ 0x20 | 3
 KERNEL_DS equ 0x10
 
 section .text
 
-user_run:
+user_enter:
     push ebp
     push ebx
     push esi
     push edi
     mov [saved_esp], esp
-    mov eax, [esp + 20]             ; entry
-    mov ecx, [esp + 24]             ; user stack
-
-    mov dx, USER_DS
-    mov ds, dx
-    mov es, dx
-    mov fs, dx
-    mov gs, dx
-    push USER_DS                    ; ss
-    push ecx                        ; esp
-    push 0x202                      ; eflags: IF on (input keeps arriving), IOPL 0
-    push USER_CS                    ; cs
-    push eax                        ; eip
-    xor eax, eax                    ; don't leak kernel values into ring 3
-    xor ebx, ebx
-    xor ecx, ecx
-    xor edx, edx
-    xor esi, esi
-    xor edi, edi
-    xor ebp, ebp
+    mov eax, [esp + 20]             ; the frame (kernel memory)
+    cli                             ; iretd turns them back on (eflags.IF)
+    mov esp, eax                    ; pop the frame as isr_common's exit does
+    pop gs
+    pop fs
+    pop es
+    pop ds
+    popad
+    add esp, 8                      ; vector + error code
     iretd
 
 user_return:
@@ -68,5 +58,5 @@ align 16
 saved_esp:
     resd 1
 trap_stack:
-    resb 32 * 1024                  ; syscalls run the input loop and FAT32 on it
+    resb 32 * 1024                  ; syscalls run FAT32 and the compositor on it
 trap_stack_top:

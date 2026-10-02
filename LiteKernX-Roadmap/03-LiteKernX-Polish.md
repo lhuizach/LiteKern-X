@@ -39,6 +39,16 @@ A few well-chosen options, like GNOME/libadwaita, not KDE-style "configure every
 - [x] Build-time defaults (e.g. `make THEME=light ACCENT=teal`), since settings aren't saved across reboots until Phase 5 §3 — `make STYLE=light ACCENT=teal WALLPAPER=dusk SPLASH=log`
 - [x] Cursors stay black and white and icons stay fixed; neither is themed
 
+## 6. Windows, Windows-style (added 2026-10-02, the user's request)
+Apps leave full screen for floating windows, and several run at once. Decided with the user: Files and Log are the favourites (pinned in the dock); any other open app joins the dock after a line; while a maximised window is in front the dock hides and the bottom edge brings it back (it stays while the pointer is on it); the focused app's dot is a long pill. One title bar per window: the app's buttons on the left, its name in the middle, minimise / maximise / close on the right.
+- [x] Several apps at once: one address space each (`kernel/vmm.c`); an app waiting for input gives the CPU back and is resumed when its window has an event (`kernel/user.c`, `kernel/lkx.c`): one trap stack serves them all
+- [x] Floating windows (`kernel/wm.c`): drag by the header bar, resize from edges and corners (minimum sizes), maximise (button, double-click, or drag to the top), snap to half the screen (drag to a side), minimise, click to bring to the front; keys go to the focused window. Apps get `K86_EVENT_RESIZE`
+- [x] Each window keeps its own pixels (mapped into its app as the canvas), so covering and uncovering never asks the app to redraw; the shell composites wallpaper, windows (shadows, rounded corners), dock, top bar and menus, only where something changed
+- [x] Dock: favourites, a line, the other open apps, Show Apps; dots: grey (minimised), white (open), a pill (focused); everything moves on springs (icons sliding and popping in and out, dots morphing, the dock rising)
+- [x] Window animations: open from the icon, minimise into the dock and back, maximise, close (fade); timed, and cut short on a slow machine like the others
+- [x] Log is a window like the rest (the console draws into it)
+- [ ] Measure dragging and the animations on the EeePC (`anim:` lines; a drag redraws two window-sized areas per move)
+
 ---
 
 ## Phase 3 Done Criteria

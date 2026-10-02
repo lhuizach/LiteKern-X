@@ -9,6 +9,7 @@
 #include "kernel/screen.h"
 #include "kernel/fb.h"
 #include "kernel/idle.h"
+#include "kernel/lkx.h"
 #include "kernel/gdt.h"
 #include "kernel/mtrr.h"
 #include "kernel/idt.h"
@@ -107,7 +108,7 @@ static struct {
     uint32_t last_log;
 } in;
 
-void idle_step(void)
+void idle_step(int busy)
 {
     struct key_event keys[8];
     struct mouse_event moves[16];
@@ -118,18 +119,26 @@ void idle_step(void)
     int nk = dev_read(in.kbd, keys, sizeof(keys));
     int nm = dev_read(in.mouse, moves, sizeof(moves));
     if (nk <= 0 && nm <= 0 && !in.moved) {
-        __asm__ volatile("sti; hlt");
+        if (busy || desktop_busy())
+            __asm__ volatile("sti; pause");     /* an app ran or something moves: no sleeping */
+        else
+            __asm__ volatile("sti; hlt");
         return;
     }
     __asm__ volatile("sti");
 
+    /* After each key and click, the apps (and kernel apps) answer before the
+     * next one is handled: what a click does can depend on what the one
+     * before it did (a close button, then the dock icon of the same app). */
     for (int i = 0; i < nk / (int)sizeof(keys[0]); i++) {
         if (desktop_input_key(&keys[i]))
             continue;
-        if (wm_is_open())
+        if (wm_focused())
             wm_input_key(&keys[i]);
         else
             log_key(&keys[i]);
+        lkx_schedule();
+        desktop_handle_events();
     }
 
     for (int i = 0; i < nm / (int)sizeof(moves[0]); i++) {
@@ -137,16 +146,17 @@ void idle_step(void)
         in.y += moves[i].dy;
         in.x = in.x < 0 ? 0 : in.x >= in.w ? in.w - 1 : in.x;
         in.y = in.y < 0 ? 0 : in.y >= in.h ? in.h - 1 : in.y;
-        /* Per packet, so no click is lost: the shell first (top bar,
-         * menu, desktop), then the open window. */
-        if (!desktop_input_mouse(in.x, in.y, moves[i].buttons) && wm_is_open())
-            wm_input_mouse(in.x, in.y, moves[i].buttons);
+        /* Per packet, so no click is lost: the shell (top bar, menu,
+         * dock) passes what isn't its own to the windows. */
+        desktop_input_mouse(in.x, in.y, moves[i].buttons);
         in.moved |= moves[i].dx || moves[i].dy;
         if (moves[i].buttons != in.buttons) {       /* clicks are always logged */
             in.buttons = moves[i].buttons;
             log_pointer(in.x, in.y, in.buttons, 1);
             in.moved = 0;
             in.last_log = uptime_ms();
+            lkx_schedule();
+            desktop_handle_events();
         }
     }
     if (nm > 0)
@@ -186,8 +196,10 @@ static void __attribute__((noreturn)) idle(const struct boot_info *bi)
 #ifndef LKX_SELFTEST_GFX
     desktop_start();
 #endif
-    for (;;)
-        idle_step();
+    for (;;) {
+        int ran = lkx_schedule();       /* every app with an event, a turn each */
+        idle_step(ran);
+    }
 }
 
 /* How fast the display path is: write-combining makes every framebuffer

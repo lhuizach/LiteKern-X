@@ -18,7 +18,8 @@
 #define SYS_EXIT            0   /* ebx: code. Doesn't return */
 #define SYS_DEBUG_WRITE     1   /* ebx: text, ecx: length. Logs "user: <text>" */
 #define SYS_UPTIME_MS       2
-#define SYS_WINDOW_OPEN     3   /* ebx: struct k86_window * out. Maps the canvas */
+#define SYS_WINDOW_OPEN     3   /* ebx: struct k86_window * out. Maps the canvas (the window's
+                                 * own pixels: draw, then SYS_WINDOW_PRESENT) */
 #define SYS_WINDOW_PRESENT  4   /* ebx, ecx, edx, esi: x, y, w, h of the canvas to show */
 #define SYS_WINDOW_HEADER   5   /* ebx: const struct k86_header *: title and buttons */
 #define SYS_WAIT_EVENT      6   /* ebx: struct k86_event * out. Sleeps until one comes */
@@ -59,8 +60,9 @@ struct lkx_header {
 
 /* --- structures ----------------------------------------------------------------- */
 struct k86_window {
-    int32_t w, h;           /* the content area, in pixels */
-    uint32_t *canvas;       /* w * h pixels, 0x00RRGGBB, stride = w */
+    int32_t w, h;           /* the content area, in pixels (K86_EVENT_RESIZE changes them) */
+    uint32_t *canvas;       /* 0x00RRGGBB, `stride` pixels a row (room for the largest size) */
+    int32_t stride;
 };
 
 #define K86_MAX_BUTTONS 6
@@ -83,6 +85,7 @@ struct k86_header {
 #define K86_EVENT_POINTER   4   /* x, y in the canvas, buttons held, changed */
 #define K86_EVENT_THEME     5   /* the style or accent changed: redraw (the SDK has already
                                  * fetched the new theme) */
+#define K86_EVENT_RESIZE    6   /* x, y: the canvas's new width and height: lay out, redraw */
 
 struct k86_event {
     int32_t type;

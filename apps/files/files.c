@@ -739,11 +739,29 @@ static void pointer(const struct k86_event *ev)
         draw_dirty();
 }
 
+/* The window was resized: everything is laid out again for the new size. */
+static void resized(int w, int h)
+{
+    canvas.w = w;
+    canvas.h = h;
+    layout();
+    if (viewing) {
+        int top = view_top;
+        view_card = (struct gfx_rect){ list.r.x, list.r.y, list.r.w, canvas.h - list.r.y - 16 };
+        view_wrap();
+        int max = view_lines - view_rows();
+        view_top = top < max ? top : max > 0 ? max : 0;
+        draw_view();
+    } else {
+        draw_all();
+    }
+}
+
 int main(void)
 {
     if (k86_window_open(&win))
         return 1;
-    canvas = (struct gfx_surface){ win.canvas, win.w, win.h, win.w };
+    canvas = (struct gfx_surface){ win.canvas, win.w, win.h, win.stride };
     b_new_folder = (struct wg_button){ .label = "New Folder" };
     b_new_file = (struct wg_button){ .label = "New File", .style = WG_BUTTON_SUGGESTED };
     b_rename = (struct wg_button){ .label = "Rename" };
@@ -765,6 +783,7 @@ int main(void)
         case K86_EVENT_POINTER: pointer(&ev); break;
         case K86_EVENT_HEADER:  if (ev.id == BACK_ID) go_back(); break;
         case K86_EVENT_THEME:   if (viewing) draw_view(); else draw_all(); break;
+        case K86_EVENT_RESIZE:  resized(ev.x, ev.y); break;
         case K86_EVENT_CLOSE:   return 0;
         default:                break;
         }

@@ -7,6 +7,7 @@
 #include "kernel/printk.h"
 #include "kernel/status.h"
 #include "kernel/theme.h"
+#include "kernel/wm.h"
 
 #define LOG_FG 0xc8d0dc     /* the console's usual text colour */
 
@@ -40,24 +41,42 @@ void log_key(const struct key_event *ev)
 
 /* --- Log: the boot log, in a window ------------------------------------- */
 
-static void log_open(void)
+static struct wm_window *log_win;
+
+static void log_damage(int x, int y, int w, int h)
+{
+    wm_damage(log_win, x, y, w, h);
+}
+
+static void log_target(void)
 {
     const struct theme *t = theme_get();
     console_set_colours(t->light ? t->fg : LOG_FG, t->view_bg);
-    console_set_area(theme_get()->topbar_h + theme_get()->headerbar_h);
+    console_set_target(wm_content(log_win), log_damage, wm_present);
+}
+
+static void log_open(struct wm_window *w)
+{
+    log_win = w;
+    log_target();
     console_set_visible(1);
 }
 
-static void log_event(const struct wm_event *ev)
+static void log_event(struct wm_window *w, const struct wm_event *ev)
 {
+    (void)w;
     if (ev->type == WM_EVENT_KEY)
         log_key(&ev->key);
+    else if (ev->type == WM_EVENT_RESIZE || ev->type == WM_EVENT_THEME)
+        log_target();               /* the new size or colours, redrawn */
 }
 
-static void log_close(void)
+static void log_close(struct wm_window *w)
 {
+    (void)w;
     console_set_visible(0);
-    console_set_area(0);
+    console_set_target(0, 0, 0);
+    log_win = 0;
     status_show(STATUS_READY);      /* the full-screen log's own colours again */
 }
 
@@ -74,7 +93,8 @@ int apps_add(const struct app *a)
 
 void apps_init(void)
 {
-    static const struct app log_app = { "Log", "log", log_open, log_event, log_close, 0 };
+    static const struct app log_app = { "Log", "log", log_open, log_event, log_close, 0,
+                                        760, 480, 0, 0, 1 };
     builtin_app_count = 0;
     lkx_register_all();
     apps_add(&log_app);

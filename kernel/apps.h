@@ -12,11 +12,14 @@
 struct app {
     const char *name;       /* under its icon, and the window title */
     const char *icon;       /* an assets/icons.json name */
-    void (*open)(void);     /* after wm_open(): draw the content */
-    void (*event)(const struct wm_event *ev);   /* NULL: events are only logged */
-    void (*close)(void);    /* before wm_close(); may be NULL */
+    void (*open)(struct wm_window *w);  /* after its window opened: draw the content */
+    void (*event)(struct wm_window *w, const struct wm_event *ev);  /* NULL: only logged */
+    void (*close)(struct wm_window *w); /* before the window closes; may be NULL */
     const char *lkx;        /* a ring 3 app: its program in the ramdisk (then the
                              * hooks above are unused) */
+    int width, height;      /* its window when it opens (0: a default) */
+    int min_width, min_height;  /* the smallest it may be made (0: kernel/wm.h's) */
+    int pinned;             /* a favourite: always in the dock (kerns.json "pinned") */
 };
 
 #define APPS_MAX 16

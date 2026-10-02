@@ -3,5 +3,9 @@
   "icon": "settings",
   "entry": "settings.lkx",
   "version": "1.0",
-  "order": 3
+  "order": 3,
+  "width": 944,
+  "height": 524,
+  "min_width": 944,
+  "min_height": 524
 }

@@ -399,7 +399,7 @@ int main(void)
 {
     if (k86_window_open(&win))
         return 1;
-    canvas = (struct gfx_surface){ win.canvas, win.w, win.h, win.w };
+    canvas = (struct gfx_surface){ win.canvas, win.w, win.h, win.stride };
     clear();
     layout();
     draw_all();
@@ -412,6 +412,7 @@ int main(void)
         case K86_EVENT_KEY:     key(&ev.key); break;
         case K86_EVENT_POINTER: pointer(&ev); break;
         case K86_EVENT_THEME:   draw_all(); break;
+        case K86_EVENT_RESIZE:  canvas.w = ev.x; canvas.h = ev.y; layout(); draw_all(); break;
         case K86_EVENT_CLOSE:   return 0;
         default:                break;
         }

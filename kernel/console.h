@@ -29,9 +29,13 @@ void console_set_colours(uint32_t fg, uint32_t bg);
  * redraws. A panic always shows it again (kernel/status.c). */
 void console_set_visible(int visible);
 
-/* Draw from screen row y down (0: the whole screen; the Log app passes its
- * header bar's height so the log shows inside a window). Redraws if shown. */
-void console_set_area(int y);
+/* Draw into s instead of the screen (the Log app's window), reporting
+ * changes to damage() and showing them with flush(); s = NULL: the whole
+ * screen again. Lines stay as wide as the screen (a narrower window cuts
+ * them off). Redraws if shown. */
+struct gfx_surface;
+void console_set_target(struct gfx_surface *s, void (*damage)(int x, int y, int w, int h),
+                        void (*flush)(void));
 
 /* Scrollback: move the view `lines` up (> 0) or down (< 0) through the last
  * 512 lines, clamped. Any new output returns to the live view. */

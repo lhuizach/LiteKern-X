@@ -283,3 +283,106 @@ int gfx_text_width(const char *str)
         n++;
     return n * FONT_W;
 }
+
+/* --- Phase 3 §6: views, scaled copies, shadows -------------------------------- */
+
+struct gfx_view gfx_view_clip(const struct gfx_view *v, struct gfx_rect r)
+{
+    struct gfx_rect local = gfx_rect_intersect((struct gfx_rect){ r.x - v->ox, r.y - v->oy, r.w, r.h },
+                                               (struct gfx_rect){ 0, 0, v->s.w, v->s.h });
+    if (gfx_rect_empty(local))
+        return (struct gfx_view){ { v->s.px, 0, 0, v->s.stride }, v->ox, v->oy };
+    return (struct gfx_view){ gfx_sub(&v->s, local), v->ox + local.x, v->oy + local.y };
+}
+
+/* Inside a hard-edged rounded rectangle of w x h (radius r)? */
+static int in_round(int x, int y, int w, int h, int r)
+{
+    int cx = x < r ? r - x : x >= w - r ? x - (w - r - 1) : 0;
+    int cy = y < r ? r - y : y >= h - r ? y - (h - r - 1) : 0;
+    return !cx || !cy || cx * cx + cy * cy <= r * r;
+}
+
+void gfx_blit_scaled(struct gfx_surface *dst, struct gfx_rect d, const struct gfx_surface *src,
+                     struct gfx_rect sr, uint32_t alpha, int radius)
+{
+    if (d.w <= 0 || d.h <= 0 || sr.w <= 0 || sr.h <= 0 || !alpha)
+        return;
+    struct gfx_rect c = clip(dst, d.x, d.y, d.w, d.h);
+    uint32_t step_x = (uint32_t)(((uint64_t)sr.w << 16) / (uint32_t)d.w);
+    uint32_t step_y = (uint32_t)(((uint64_t)sr.h << 16) / (uint32_t)d.h);
+    if (radius > d.w / 2)
+        radius = d.w / 2;
+    if (radius > d.h / 2)
+        radius = d.h / 2;
+    for (int row = c.y; row < c.y + c.h; row++) {
+        int ly = row - d.y;
+        const uint32_t *sp = src->px + (sr.y + (int)((uint32_t)ly * step_y >> 16)) * src->stride + sr.x;
+        uint32_t *dp = dst->px + row * dst->stride;
+        int corner_row = ly < radius || ly >= d.h - radius;
+        for (int col = c.x; col < c.x + c.w; col++) {
+            int lx = col - d.x;
+            if (corner_row && !in_round(lx, ly, d.w, d.h, radius))
+                continue;
+            uint32_t p = sp[(uint32_t)lx * step_x >> 16];
+            dp[col] = alpha >= 255 ? p : gfx_mix(p, dp[col], alpha);
+        }
+    }
+}
+
+void gfx_blit_alpha_scaled(struct gfx_surface *dst, struct gfx_rect d, const uint32_t *argb, int w,
+                           int h, int stride, uint32_t alpha)
+{
+    if (d.w <= 0 || d.h <= 0 || !alpha)
+        return;
+    if (d.w == w && d.h == h && alpha >= 255) {
+        gfx_blit_alpha(dst, d.x, d.y, argb, w, h, stride);
+        return;
+    }
+    struct gfx_rect c = clip(dst, d.x, d.y, d.w, d.h);
+    uint32_t step_x = (uint32_t)(((uint64_t)w << 16) / (uint32_t)d.w);
+    uint32_t step_y = (uint32_t)(((uint64_t)h << 16) / (uint32_t)d.h);
+    for (int row = c.y; row < c.y + c.h; row++) {
+        const uint32_t *sp = argb + (int)((uint32_t)(row - d.y) * step_y >> 16) * stride;
+        uint32_t *dp = dst->px + row * dst->stride;
+        for (int col = c.x; col < c.x + c.w; col++) {
+            uint32_t p = sp[(uint32_t)(col - d.x) * step_x >> 16];
+            uint32_t a = (p >> 24) * alpha / 255;
+            if (a)
+                dp[col] = gfx_mix(p & 0xffffff, dp[col], a);
+        }
+    }
+}
+
+/* Soft shadow: rings of black, each a little bigger and fainter, drawn only
+ * outside (x, y, w, h) (the window covers the rest). */
+void gfx_shadow(struct gfx_surface *s, int x, int y, int w, int h, int r, int size, uint32_t strength)
+{
+    static const uint8_t weight[] = { 5, 4, 3, 3, 2, 2, 1, 1 };
+    int layers = size < 8 ? size : 8;
+    if (layers < 1)
+        return;
+    int grow = size / layers;
+    /* The four bands around the rectangle, as views (local coordinates). */
+    int m = size + 6;
+    struct gfx_rect bands[4] = {
+        { x - m, y - m, w + 2 * m, m + r },             /* above (and the top corners) */
+        { x - m, y + h - r, w + 2 * m, m + r },         /* below */
+        { x - m, y + r, m, h - 2 * r },                 /* left */
+        { x + w, y + r, m, h - 2 * r },                 /* right */
+    };
+    for (int b = 0; b < 4; b++) {
+        struct gfx_rect lr = gfx_rect_intersect(bands[b], (struct gfx_rect){ 0, 0, s->w, s->h });
+        if (gfx_rect_empty(lr))
+            continue;
+        struct gfx_surface sub = gfx_sub(s, lr);
+        for (int i = layers - 1; i >= 0; i--) {
+            int g = (i + 1) * grow;
+            uint32_t a = weight[i] * strength / 16;
+            if (!a)
+                continue;
+            round_shape(&sub, x - g - lr.x, y - g + g / 3 - lr.y, w + 2 * g, h + 2 * g, r + g, 0, a,
+                        SHAPE_BLEND);
+        }
+    }
+}

@@ -6,11 +6,8 @@
 
 #include <stdint.h>
 
-/* The calls above SYS_UPTIME_MS; -ENOSYS for unknown numbers. */
+/* The calls above SYS_UPTIME_MS (but SYS_WAIT_EVENT: kernel/lkx.h); -ENOSYS
+ * for unknown numbers. */
 int sys_app(uint32_t nr, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5);
-
-/* Around each app run (kernel/lkx.c). */
-void sys_app_start(const char *name);
-void sys_app_end(void);
 
 #endif

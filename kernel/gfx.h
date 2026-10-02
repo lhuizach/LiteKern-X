@@ -74,4 +74,28 @@ void gfx_char(struct gfx_surface *s, int x, int y, char c, uint32_t fg, uint32_t
 int gfx_text(struct gfx_surface *s, int x, int y, const char *str, uint32_t fg, uint32_t bg);
 int gfx_text_width(const char *str);
 
+/* --- Phase 3 §6 ------------------------------------------------------------------ */
+
+/* A view: a surface showing the screen from (ox, oy), so something at screen
+ * (x, y) is drawn at (x - ox, y - oy). The compositor draws each damaged
+ * rectangle through one; gfx_view_clip narrows one to r (screen
+ * coordinates), keeping it consistent. */
+struct gfx_view {
+    struct gfx_surface s;
+    int ox, oy;
+};
+struct gfx_view gfx_view_clip(const struct gfx_view *v, struct gfx_rect r);
+
+/* Copy src's sr scaled to fill d (nearest pixel), blended at alpha
+ * (0..255), with hard-edged rounded corners of `radius` (0: square). For
+ * animations: quick, not pretty up close. */
+void gfx_blit_scaled(struct gfx_surface *dst, struct gfx_rect d, const struct gfx_surface *src,
+                     struct gfx_rect sr, uint32_t alpha, int radius);
+/* An ARGB image scaled to d, its alpha times `alpha` (0..255). */
+void gfx_blit_alpha_scaled(struct gfx_surface *dst, struct gfx_rect d, const uint32_t *argb, int w,
+                           int h, int stride, uint32_t alpha);
+/* A soft drop shadow around (x, y, w, h) (radius r), `size` px wide,
+ * darkest at `strength` (0..255). Only drawn outside the rectangle. */
+void gfx_shadow(struct gfx_surface *s, int x, int y, int w, int h, int r, int size, uint32_t strength);
+
 #endif

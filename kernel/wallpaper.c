@@ -236,17 +236,16 @@ int wallpaper_list(char names[][32], int max)
     return count;
 }
 
-void wallpaper_draw(int x, int y, int w, int h, uint32_t dim)
+void wallpaper_draw(struct gfx_surface *dst, int ox, int oy, uint32_t dim)
 {
-    struct gfx_surface *scr = screen_surface();
     if (!shown) {
         uint32_t c = theme_get()->desktop_bg;
-        gfx_fill_rect(scr, x, y, w, h, dim ? gfx_mix(0, c, dim) : c);
+        gfx_fill_rect(dst, 0, 0, dst->w, dst->h, dim ? gfx_mix(0, c, dim) : c);
         return;
     }
-    gfx_blit(scr, x, y, &image, x, y, w, h);
+    gfx_blit(dst, 0, 0, &image, ox, oy, dst->w, dst->h);
     if (dim)
-        gfx_darken(scr, x, y, w, h, dim);
+        gfx_darken(dst, 0, 0, dst->w, dst->h, dim);
 }
 
 uint32_t wallpaper_corner(void)

@@ -3,7 +3,7 @@
 #include "kernel/desktop.h"
 #include "kernel/fat32.h"
 #include "kernel/font.h"
-#include "kernel/idle.h"
+#include "kernel/lkx.h"
 #include "kernel/kern86_abi.h"
 #include "kernel/printk.h"
 #include "kernel/storage.h"
@@ -12,21 +12,6 @@
 #include "kernel/user.h"
 #include "kernel/wallpaper.h"
 #include "kernel/wm.h"
-
-static int canvas_w, canvas_h;      /* 0 until SYS_WINDOW_OPEN */
-static int close_sent;              /* the app has been told to close */
-
-void sys_app_start(const char *name)
-{
-    (void)name;
-    canvas_w = canvas_h = 0;
-    close_sent = 0;
-}
-
-void sys_app_end(void)
-{
-    canvas_w = canvas_h = 0;
-}
 
 /* Copy a NUL-terminated string from the app, checking every byte's page. */
 static int user_string(char *dst, uint32_t src, int max)
@@ -43,42 +28,41 @@ static int user_string(char *dst, uint32_t src, int max)
 
 /* --- window ------------------------------------------------------------------ */
 
+/* The app's window was opened for it when it started: map its pixels in as
+ * the canvas. The buffer stays the window's (shared): the app's teardown
+ * doesn't free it. */
 static int window_open(uint32_t out)
 {
-    struct gfx_surface *c = wm_content();
-    if (!wm_is_open())
+    struct wm_window *w = lkx_window();
+    if (!w)
         return -EINVAL;
     if (user_check(out, sizeof(struct k86_window), 1))
         return -EFAULT;
-    int err = user_map(K86_CANVAS, (uint32_t)(c->w * c->h * 4));
+    uint32_t bytes;
+    uint32_t *buf = wm_buffer(w, &bytes);
+    int err = user_map_shared(K86_CANVAS, (uint32_t)buf, bytes);
     if (err)
         return err;
-    canvas_w = c->w;
-    canvas_h = c->h;
-    *(struct k86_window *)out = (struct k86_window){ c->w, c->h, (uint32_t *)K86_CANVAS };
+    struct gfx_surface *c = wm_content(w);
+    *(struct k86_window *)out = (struct k86_window){ c->w, c->h, (uint32_t *)K86_CANVAS, c->stride };
     return 0;
 }
 
 static int window_present(int x, int y, int w, int h)
 {
-    if (!canvas_w)
-        return -EINVAL;
-    struct gfx_rect r = gfx_rect_intersect((struct gfx_rect){ x, y, w, h },
-                                           (struct gfx_rect){ 0, 0, canvas_w, canvas_h });
-    if (gfx_rect_empty(r))
-        return 0;
-    /* The canvas pages were mapped by window_open and only the kernel unmaps
-     * them, so they are still there. */
-    struct gfx_surface canvas = { (uint32_t *)K86_CANVAS, canvas_w, canvas_h, canvas_w };
-    gfx_blit(wm_content(), r.x, r.y, &canvas, r.x, r.y, r.w, r.h);
-    wm_damage(r.x, r.y, r.w, r.h);
+    struct wm_window *win = lkx_window();
+    if (!win || user_check(K86_CANVAS, 4, 1))
+        return -EINVAL;                     /* no canvas yet */
+    /* The app drew straight into the window's pixels: just show them. */
+    wm_damage(win, x, y, w, h);
     wm_present();
     return 0;
 }
 
 static int window_header(uint32_t req)
 {
-    if (!wm_is_open())
+    struct wm_window *w = lkx_window();
+    if (!w)
         return -EINVAL;
     if (user_check(req, sizeof(struct k86_header), 0))
         return -EFAULT;
@@ -86,39 +70,18 @@ static int window_header(uint32_t req)
     h.title[sizeof(h.title) - 1] = '\0';
     if (h.nbuttons < 0 || h.nbuttons > K86_MAX_BUTTONS)
         return -EINVAL;
-    wm_clear_buttons();
+    for (int i = 0; i < h.nbuttons; i++)
+        if (h.buttons[i].icon < WM_ICON_NONE || h.buttons[i].icon > WM_ICON_UP)
+            return -EINVAL;
+    wm_clear_buttons(w);
     for (int i = 0; i < h.nbuttons; i++) {
         h.buttons[i].label[sizeof(h.buttons[i].label) - 1] = '\0';
-        int icon = h.buttons[i].icon;
-        if (icon < WM_ICON_NONE || icon > WM_ICON_UP)
-            return -EINVAL;
-        wm_add_button(h.buttons[i].side ? WM_RIGHT : WM_LEFT, (enum wm_icon)icon,
+        wm_add_button(w, h.buttons[i].side ? WM_RIGHT : WM_LEFT, (enum wm_icon)h.buttons[i].icon,
                       h.buttons[i].label, h.buttons[i].id);
     }
-    wm_set_title(h.title);
+    wm_set_title(w, h.title);
+    wm_present();
     return 0;
-}
-
-/* Sleep in the kernel's input loop until the window has an event. After a
- * close has been delivered, the next call ends the app. */
-static int wait_event(uint32_t out)
-{
-    if (user_check(out, sizeof(struct k86_event), 1))
-        return -EFAULT;
-    for (;;) {
-        struct wm_event ev;
-        if (close_sent || !wm_is_open())
-            user_exit(0);
-        if (wm_poll_event(&ev)) {
-            close_sent = ev.type == WM_EVENT_CLOSE;
-            *(struct k86_event *)out = (struct k86_event){
-                .type = (int32_t)ev.type, .x = ev.x, .y = ev.y, .buttons = ev.buttons,
-                .changed = ev.changed, .id = ev.id, .time_ms = ev.time_ms, .key = ev.key };
-            return 0;
-        }
-        idle_step();                        /* input, the clock, the top bar; may sleep */
-        __asm__ volatile("cli");            /* back to the syscall's own state */
-    }
 }
 
 static int font(uint32_t out)
@@ -337,7 +300,6 @@ int sys_app(uint32_t nr, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uin
     case SYS_WINDOW_OPEN:    return window_open(a1);
     case SYS_WINDOW_PRESENT: return window_present((int)a1, (int)a2, (int)a3, (int)a4);
     case SYS_WINDOW_HEADER:  return window_header(a1);
-    case SYS_WAIT_EVENT:     return wait_event(a1);
     case SYS_FONT:           return font(a1);
     case SYS_FS_VOLUMES:     return volumes(a1, a2);
     case SYS_FS_LIST:        return fs_list(a1, a2, a3, a4);

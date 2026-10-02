@@ -100,14 +100,30 @@ NAVY=1e3a5f TEXT=c8d0dc RED=801010 WHITE=ffffff
 
 # The shell's layout on QEMU's 1024x768 screen, worked out like
 # kernel/desktop.c does, so adding an app doesn't move every test. The pointer
-# starts at the centre, 512,384. dock_x I N: the centre of dock item I of N
-# apps (Show Apps is item N); grid_x I N: of app I in the app menu.
+# starts at the centre, 512,384.
+#   dock_x I N: the centre of dock item I of N pinned apps (Show Apps is item
+#     N), with no other app open: the dock is Files, Log, Show Apps
+#   grid_x I N: of app I in the app menu (one row, y 311-415; centre 363).
+#     Its order: Files, Calculator, Settings, Log
+#   win_close W H: the close button of a W x H window, which opens centred
+#     below the 30 px top bar (kernel/wm.c); win_xy W H: its top-left corner
 dock_x() { echo $(( (1024 - (($2 + 1) * 60 + 16)) / 2 + 38 + $1 * 60 )); }
 grid_x() { echo $(( (1024 - $2 * 112) / 2 + 56 + $1 * 112 )); }
+win_xy() { echo "$(( (1024 - $1) / 2 )) $(( 30 + (738 - $2) / 2 ))"; }
+win_close() { set -- $(( (1024 - $1) / 2 + $1 - 24 )) $(( 30 + (738 - $2) / 2 + 24 )); echo "$1 $2"; }
 NAPPS=$(( $(ls -d apps/*/ | wc -l) + 1 ))      # the apps/ folders, then Log
-FILES_X=$(dock_x 0 "$NAPPS") SETTINGS_X=$(dock_x 2 "$NAPPS") LOG_X=$(dock_x $((NAPPS - 1)) "$NAPPS")
-SHOWAPPS_X=$(dock_x "$NAPPS" "$NAPPS")
+FILES_X=$(dock_x 0 2) LOG_X=$(dock_x 1 2) SHOWAPPS_X=$(dock_x 2 2) DOCK_Y=728 GRID_Y=363
+CALC_TILE=$(grid_x 1 "$NAPPS") SETTINGS_TILE=$(grid_x 2 "$NAPPS") LOG_TILE=$(grid_x 3 "$NAPPS")
 FILES_ICON="$((FILES_X - 30)),698,$((FILES_X + 30)),758"      # the folder icon in the dock
+FILES_CLOSE=$(win_close 760 500) LOG_CLOSE=$(win_close 760 480)
+CALC_CLOSE=$(win_close 420 548) SETTINGS_CLOSE=$(win_close 944 524)
+
+# Pointer paths: absolute positions turned into the relative moves QEMU sends.
+#   path; go X Y; click; key a b; ... then KEYS="$P"
+path() { PX=512 PY=384 P=""; }
+go() { P+=" move:$(( $1 - PX )),$(( $2 - PY ))"; PX=$1 PY=$2; }
+click() { P+=" press:1 release"; }
+add() { P+=" $*"; }
 # The desktop's bottom-right corner: the wallpaper's bottom edge colour (the
 # 1024x600 image is centred on QEMU's 1024x768 screen). PLAIN: no wallpaper.
 DESKTOP=$(sed -n 's/^bottom=//p' build/gen/wallpapers/crossing.lkxw.txt) PLAIN=202634
@@ -266,18 +282,17 @@ check "cursor: the arrow follows the touchpad, nothing left behind" \
     "^screen: has $BLACK in 505,380,540,410: no$" \
     '!cursor: no|PANIC'
 
-# Window system: the self-test leaves a window open; the cursor (starting at
-# the centre, 512,384) is moved onto the close button (1001,53: below the
-# 30 px top bar) and clicked.
-SCREEN="has=222226@200,400,800,700 corner=" \
+# Window system: the self-test leaves a 760x480 window open, centred; the
+# cursor is moved onto its close button and clicked.
+SCREEN="has=222226@200,400,800,600 corner=" \
     boot_until build/test-wm/litekernx.img '^selftest: wm [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$' 20
-check "window system: header bar, buttons, events (+ Adwaita dark window on screen)" \
+check "window system: floating windows, header bar, buttons, focus, drag, resize, maximise, minimise" \
     '^selftest: wm ([0-9]+)/\1 passed$' \
-    '^screen: has 222226 in 200,400,800,700: yes$' \
-    '^screen: corner 222226$' \
+    '^screen: has 222226 in 200,400,800,600: yes$' \
     '!selftest: FAIL|PANIC'
 
-KEYS="move:489,-331 press:1 release" KEYS_DONE='^wm: close' SCREEN="corner=" \
+path; go $(win_close 760 480); click
+KEYS="$P" KEYS_DONE='^wm: close' SCREEN="corner=" \
     boot_until build/test-wm/litekernx.img "$done_re" 20
 check "window system: clicking the close button closes the window, the desktop comes back" \
     '^wm: close$' \
@@ -295,16 +310,15 @@ check "desktop: logged clicks don't draw the log over it" \
     "^screen: has $TEXT in 0,0,1024,768: no$" \
     '!PANIC'
 
-# The shell on the 1024x768 screen. The pointer starts at 512,384.
-#   dock (bottom, centred): dock_x above; y 698-758
-#   top bar: Home 6-46, power 978-1018; y 3-27. Power menu: Restart 844-1012 x 40-74
-#   app menu (one row, centred above the dock): grid_x above; y 311-415
-#   a window's close button: 1001,53
-KEYS="move:$((FILES_X - 512)),344 press:1 release move:$((1001 - FILES_X)),-675 press:1 release" KEYS_DONE='^desktop: close Files' \
-SCREEN="corner= has=3584e4@$FILES_ICON" \
+# The shell on the 1024x768 screen (positions: see dock_x, grid_x, win_close
+# above). Top bar: Home 6-46, power 978-1018; y 3-27. Power menu: Restart
+# 844-1012 x 40-74.
+path; go "$FILES_X" "$DOCK_Y"; click; add sleep:1; go $FILES_CLOSE; click
+KEYS="$P" KEYS_DONE='^desktop: close Files' SCREEN="corner= has=3584e4@$FILES_ICON" \
     boot_until build/litekernx.img "$done_re" 20
-check "desktop: the dock opens Files (a ring 3 app); its close button ends it" \
+check "desktop: the dock opens Files (a ring 3 app) in a window; its close button ends it" \
     '^desktop: open Files$' \
+    '^wm: open Files at 132,149 760x500$' \
     '^anim: open Files, [0-9]+ frames, [0-9]+ ms, slowest frame [0-9]+ ms$' \
     '^anim: close Files, [0-9]+ frames, [0-9]+ ms, slowest frame [0-9]+ ms$' \
     '^lkx: Files exited \(0\)$' \
@@ -344,42 +358,98 @@ check "Files: create, rename, delete and folders on the FAT32 partition (checked
     '!mtools: ::/(hi|bye)$' \
     '!user: files: create bye|^user: files: .* failed|PANIC'
 
-# The Log app shows the log below the top bar and its header bar (30 + 46 px).
+# The Log app: the log inside its window (760x480, content from 133,206),
+# drawn as the console draws it. Home (the key) shows the log's start, with
+# the "scrolled back" indicator at the window's right edge.
 KEYS="move:$((LOG_X - 512)),344 press:1 release a b c d e f g h i j k l m home" KEYS_DONE="^kbd: key 0x026 'l'" \
-SCREEN="has=$TEXT@0,76,200,92 has=$TEXT@800,76,1024,92 has=$TEXT@0,92,100,108" \
+SCREEN="has=$TEXT@133,206,400,222 has=$TEXT@600,206,880,222 has=$TEXT@133,222,250,238" \
     boot_until build/litekernx.img "$done_re" 20
 check "Log app: the log in a window; Home shows its start with the indicator" \
     '^desktop: open Log$' \
-    "^screen: has $TEXT in 0,76,200,92: no$" \
-    "^screen: has $TEXT in 800,76,1024,92: yes$" \
-    "^screen: has $TEXT in 0,92,100,108: yes$" \
+    '^wm: open Log at 132,159 760x480$' \
+    "^screen: has $TEXT in 133,206,400,222: no$" \
+    "^screen: has $TEXT in 600,206,880,222: yes$" \
+    "^screen: has $TEXT in 133,222,250,238: yes$" \
     '!kbd: key 0x147'
 
-KEYS="move:$((SHOWAPPS_X - 512)),344 press:1 release move:$(( $(grid_x $((NAPPS - 1)) "$NAPPS") - SHOWAPPS_X )),-365 press:1 release" KEYS_DONE='^desktop: open Log' \
-    boot_until build/litekernx.img "$done_re" 20
+path; go "$SHOWAPPS_X" "$DOCK_Y"; click; go "$LOG_TILE" "$GRID_Y"; click
+KEYS="$P" KEYS_DONE='^desktop: open Log' boot_until build/litekernx.img "$done_re" 20
 check "shell: Show Apps opens the app menu; clicking an app there opens it" \
     '^desktop: app menu open$' \
     '^desktop: open Log$' \
     '!PANIC'
 
-KEYS="move:$((FILES_X - 512)),344 press:1 release move:$((26 - FILES_X)),-713 press:1 release" KEYS_DONE='^desktop: close Files' \
-SCREEN="corner=" boot_until build/litekernx.img "$done_re" 20
-check "shell: Home closes the open app" \
+path; go "$FILES_X" "$DOCK_Y"; click; add sleep:1; go 26 15; click
+KEYS="$P" KEYS_DONE='^anim: minimise Files' SCREEN="corner=" boot_until build/litekernx.img "$done_re" 20
+check "shell: Home shows the desktop (the windows go into the dock)" \
     '^desktop: open Files$' \
-    '^lkx: Files exited \(0\)$' \
-    '^desktop: close Files$' \
+    '^desktop: show desktop$' \
+    '^desktop: minimise Files$' \
     "^screen: corner $DESKTOP$" \
+    '!PANIC|lkx: Files exited'
+
+# Two apps at once (Phase 3 section 6): Files from the dock, Calculator from
+# the app menu. Calculator isn't a favourite, so it joins the dock after a
+# line while it's open. Minimised (its minimise button), it keeps running:
+# its dock icon brings it back, and it still counts. Closed, it leaves the
+# dock; Files carries on.
+read cx cy < <(win_xy 420 548)
+path; go "$FILES_X" "$DOCK_Y"; click; add sleep:1.5
+go "$SHOWAPPS_X" "$DOCK_Y"; click; go "$CALC_TILE" "$GRID_Y"; click; add sleep:1.5
+go $((cx + 420 - 96)) $((cy + 24)); click; add sleep:1
+go 550 "$DOCK_Y"; click; add sleep:1 1 shift-equal 2 ret sleep:0.5
+go $CALC_CLOSE; click; add sleep:1.5
+KEYS="$P" KEYS_DONE='^lkx: Calculator exited' \
+SCREEN="has=$WHITE@444,754,460,758" boot_until build/litekernx.img "$done_re" 30
+check "windows: two apps at once; the dock adds Calculator after a line; minimise and restore" \
+    '^user: files: open Boot disk \(LITEKERNX\)$' \
+    '^user: calculator: open$' \
+    '^dock: Files Log \| Calculator Show Apps$' \
+    '^desktop: minimise Calculator$' \
+    '^anim: minimise Calculator, ' \
+    '^desktop: restore Calculator$' \
+    '^user: calculator: 1 \+ 2 = 3$' \
+    '^lkx: Calculator exited \(0\)$' \
+    '^dock: Files Log Show Apps$' \
+    "^screen: has $WHITE in 444,754,460,758: yes$" \
+    '!PANIC|crashed|lkx: Files exited'
+
+# Moving and maximising: Files dragged by its header bar, then maximised with
+# a double-click there. A maximised window hides the dock; the bottom edge of
+# the screen brings it back.
+path; go "$FILES_X" "$DOCK_Y"; click; add sleep:1.5
+go 500 170; add press:1; go 520 180; go 560 210; add release sleep:0.5
+go 600 210; click; add gap:0.05; click; add gap:0.15 sleep:1.5
+KEYS="$P" KEYS_DONE='^anim: maximise Files' SCREEN="has=222226@500,735,524,745" \
+    boot_until build/litekernx.img "$done_re" 30
+check "windows: dragged by the header bar; double-click maximises; the dock hides" \
+    '^wm: Boot disk \(LITEKERNX\) moved to 192,189$' \
+    '^desktop: maximise Files$' \
+    "^screen: has 222226 in 500,735,524,745: yes$" \
     '!PANIC'
 
-# Settings (Appearance), laid out like apps/settings/settings.c: the Light
-# card (y 124-244), Right = the next accent, the "None" background (y
-# 416-510), first in the row of wallpapers. The window must turn light at
+path; go "$FILES_X" "$DOCK_Y"; click; add sleep:1.5
+go $((FILES_X + 300)) 160; click; add gap:0.05; click; add gap:0.15 sleep:1.5
+go 512 767; add sleep:1.5
+KEYS="$P" KEYS_DONE='^dock: shown \(bottom edge\)' SCREEN="has=3584e4@$FILES_ICON" \
+    boot_until build/litekernx.img "$done_re" 30
+check "windows: over a maximised window, the bottom edge brings the dock back" \
+    '^desktop: maximise Files$' \
+    '^dock: shown \(bottom edge\)$' \
+    "^screen: has 3584e4 in $FILES_ICON: yes$" \
+    '!PANIC'
+
+# Settings (Appearance), from the app menu, laid out like
+# apps/settings/settings.c in its 944x524 window (content from 41,184): the
+# Light card (y 232-352), Right = the next accent, the "None" background
+# (y 524-618), first in the row of wallpapers. The window must turn light at
 # once (window_bg fafafb), and the kernel logs each change.
 nwall=$(ls assets/wallpapers/*.png | grep -vc -- '-light\.png$')
 row_w=$(( (nwall + 1) * 160 + nwall * 24 )); [ "$row_w" -lt 424 ] && row_w=424
-sx0=$(( (1024 - row_w) / 2 )); light_x=$((sx0 + 324)); none_x=$((sx0 + 80))
-KEYS="move:$((SETTINGS_X - 512)),344 press:1 release sleep:1.5 move:$((light_x - SETTINGS_X)),-544 press:1 release sleep:0.5 right sleep:0.3 move:$((none_x - light_x)),279 press:1 release sleep:0.5" \
-KEYS_DONE='^appearance: light, accent teal, wallpaper none' SCREEN="has=fafafb@60,300,240,600" \
+sx0=$(( 41 + (942 - row_w) / 2 )); light_x=$((sx0 + 324)); none_x=$((sx0 + 80))
+path; go "$SHOWAPPS_X" "$DOCK_Y"; click; go "$SETTINGS_TILE" "$GRID_Y"; click; add sleep:1.5
+go "$light_x" 292; click; add sleep:0.5 right sleep:0.3; go "$none_x" 571; click; add sleep:0.5
+KEYS="$P" KEYS_DONE='^appearance: light, accent teal, wallpaper none' SCREEN="has=fafafb@60,300,240,600" \
     boot_until build/litekernx.img "$done_re" 30
 check "Settings: style, accent and background change at once" \
     '^user: settings: open$' \
@@ -391,11 +461,13 @@ check "Settings: style, accent and background change at once" \
     '!PANIC'
 
 # Calculator: sums typed on the keyboard, plus one with its own buttons (the
-# keypad's "7" is at column 0, row 1: x = centre - 2 keys, y = 76+24+112+16 +
-# 66 + 28 in screen coordinates). Exact decimals; overflow and / 0 are errors.
-CALC_X=$(dock_x 1 "$NAPPS")
-KEYS="move:$((CALC_X - 512)),344 press:1 release sleep:1.5 1 2 shift-equal 3 0 ret 7 slash 0 ret c 1 dot 5 shift-8 4 ret 2 0 0 minus 1 0 shift-5 ret 9 9 9 9 9 9 9 9 9 9 9 shift-8 9 9 9 ret c 1 slash 3 ret c move:$((465 - CALC_X)),-406 press:1 release press:1 release ret" \
-KEYS_DONE='^user: calculator: 1 / 3 = 0\.333333$' boot_until build/litekernx.img "$done_re" 30
+# keypad's "7" is at column 0, row 1 of its 420x548 window: x 302 + 1 + 26 +
+# 42, y 125 + 47 + 24 + 112 + 16 + 66 + 28). Exact decimals; overflow and
+# / 0 are errors.
+path; go "$SHOWAPPS_X" "$DOCK_Y"; click; go "$CALC_TILE" "$GRID_Y"; click; add sleep:1.5
+add 1 2 shift-equal 3 0 ret 7 slash 0 ret c 1 dot 5 shift-8 4 ret 2 0 0 minus 1 0 shift-5 ret 9 9 9 9 9 9 9 9 9 9 9 shift-8 9 9 9 ret c 1 slash 3 ret c
+go 371 418; click; click; add ret
+KEYS="$P" KEYS_DONE='^user: calculator: 1 / 3 = 0\.333333$' boot_until build/litekernx.img "$done_re" 30
 check "Calculator: exact decimals; overflow and division by zero are errors" \
     '^user: calculator: open$' \
     '^user: calculator: 12 \+ 30 = 42$' \
@@ -414,16 +486,16 @@ check "Files: text files open in a viewer; Esc goes back" \
     '^user: files: view Welcome to LiteKern X\.txt \(184 bytes, [0-9]+ lines\)$' \
     '!PANIC'
 
-# The run-through (Phase 3 section 4): every app opened from the dock and
-# closed with its close button, one after another, then Restart from the
-# power menu. Nothing may crash; every app must exit cleanly.
-run=""
-for i in $(seq 0 $((NAPPS - 1))); do
-    x=$(dock_x "$i" "$NAPPS")
-    run+=" move:$((x - 512)),344 press:1 release sleep:1.5 move:$((1001 - x)),-675 press:1 release sleep:1 move:-489,331"
-done
-run+=" move:486,-369 press:1 release move:-68,42 press:1 release"
-KEYS="$run" KEYS_DONE='^power: restarting' boot_until build/litekernx.img "$done_re" 60
+# The run-through (Phase 3 section 4): every app opened (the dock, or the app
+# menu) and closed with its close button, one after another, then Restart
+# from the power menu. Nothing may crash; every app must exit cleanly.
+path
+go "$FILES_X" "$DOCK_Y"; click; add sleep:1.5; go $FILES_CLOSE; click; add sleep:1
+go "$LOG_X" "$DOCK_Y"; click; add sleep:1.5; go $LOG_CLOSE; click; add sleep:1
+go "$SHOWAPPS_X" "$DOCK_Y"; click; go "$CALC_TILE" "$GRID_Y"; click; add sleep:1.5; go $CALC_CLOSE; click; add sleep:1
+go "$SHOWAPPS_X" "$DOCK_Y"; click; go "$SETTINGS_TILE" "$GRID_Y"; click; add sleep:1.5; go $SETTINGS_CLOSE; click; add sleep:1
+go 998 15; click; go 930 57; click
+KEYS="$P" KEYS_DONE='^power: restarting' boot_until build/litekernx.img "$done_re" 60
 check "run-through: open and close every app, then restart" \
     '^lkx: Files exited \(0\)$' \
     '^lkx: Calculator exited \(0\)$' \
@@ -492,13 +564,17 @@ check "ATA internal disk: found, FAT32 read-only, NTFS left alone, never written
     '!user: files: create|PANIC'
 
 # Misbehaving apps must never take the kernel down (Phase 2 section 5). The test
-# image's dock: the apps/ folders, then Crash, Badcalls, Hang, then Log.
-# (y 698-758). Crash writes to address 0; Badcalls passes kernel pointers and
-# nonsense to the calls; Hang spins until the watchdog stops it. Then Files
-# must still open and work.
-n=$((NAPPS + 3)); crash=$(dock_x $((NAPPS - 1)) $n); files=$(dock_x 0 $n)
-KEYS="move:$((crash - 512)),344 press:1 release sleep:1 move:60,0 press:1 release sleep:1 move:60,0 press:1 release sleep:12 move:$((files - crash - 120)),0 press:1 release sleep:1" \
-KEYS_DONE='^user: files: open' boot_until build/test-apps/litekernx.img "$done_re" 40
+# image's app menu: the apps/ folders, then Crash, Badcalls, Hang, then Log.
+# Crash writes to address 0; Badcalls passes kernel pointers and nonsense to
+# the calls; Hang spins until the watchdog stops it. Then Files (from the
+# dock) must still open and work.
+n=$((NAPPS + 3))
+path
+for i in $((NAPPS - 1)) "$NAPPS" $((NAPPS + 1)); do
+    go "$SHOWAPPS_X" "$DOCK_Y"; click; go "$(grid_x "$i" "$n")" "$GRID_Y"; click; add sleep:1
+done
+add sleep:11; go "$FILES_X" "$DOCK_Y"; click; add sleep:1
+KEYS="$P" KEYS_DONE='^user: files: open' boot_until build/test-apps/litekernx.img "$done_re" 40
 check "apps: a crash, bad calls and a hang each end only the app" \
     '^user: killed by exception 14 \(#PF page fault\) at eip=0x8' \
     '^lkx: Crash crashed \(page fault\) and was stopped; the system carries on$' \
@@ -520,19 +596,20 @@ check "apps: a crash, bad calls and a hang each end only the app" \
     '!still running|PANIC'
 
 # Stability (Phase 2 section 6): Files opened and closed 15 times, then a burst
-# of keys and clicks 20 ms apart. Every app run must give back all of its
-# memory, and Files must still work at the end. On a scratch copy of the image.
+# of keys and clicks (in its list) 20 ms apart. Every app run must give back
+# all of its memory, and Files must still work at the end. On a scratch copy
+# of the image.
 mkdir -p build/test-stress
 cp build/litekernx.img build/test-stress/disk.img
-stress="gap:0.1"
+path; add gap:0.1
 for i in $(seq 15); do
-    stress+=" move:$((FILES_X - 512)),344 press:1 release move:$((1001 - FILES_X)),-675 press:1 release move:-489,331"
+    go "$FILES_X" "$DOCK_Y"; click; go $FILES_CLOSE; click
 done
-stress+=" move:$((FILES_X - 512)),344 press:1 release sleep:1 gap:0.02"
-for i in $(seq 60); do stress+=" down up"; done
-for i in $(seq 30); do stress+=" press:1 release"; done
-stress+=" home end pgdn pgup ctrl-n a b c esc f2 esc delete esc gap:0.15 sleep:0.5 ctrl-n o k ret"
-KEYS="$stress" KEYS_DONE='^user: files: create ok' boot_until build/test-stress/disk.img "$done_re" 90
+go "$FILES_X" "$DOCK_Y"; click; add sleep:1; go 512 400; add gap:0.02
+for i in $(seq 60); do add down up; done
+for i in $(seq 30); do click; done
+add home end pgdn pgup ctrl-n a b c esc f2 esc delete esc gap:0.15 sleep:0.5 ctrl-n o k ret
+KEYS="$P" KEYS_DONE='^user: files: create ok' boot_until build/test-stress/disk.img "$done_re" 90
 opens=$(grep -c '^desktop: open Files$' <<<"$out")
 mem=$(grep '^lkx: memory free' <<<"$out" | sort -u | wc -l)
 out+=$'\n'"stress: $opens opens; $mem distinct memory lines"

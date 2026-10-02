@@ -1,44 +1,60 @@
-/* LiteKern X — the shell (Phase 2): what shows after boot.
+/* LiteKern X — the shell: what shows after boot (Phase 2; windows and the
+ * new dock in Phase 3 §6).
  *
- * GNOME-style and minimal (Phase 3 redoes it):
- *   - the top bar, always: Home and the open app's name on the left, the
- *     day, date and time (24-hour, from rtc0) in the middle, a power menu
- *     (Restart; Shut Down waits for ACPI in Phase 5) on the right
- *   - the desktop, while no app is open: the app grid, and a dock of the
- *     same apps at the bottom
- * Clicking an app opens it full screen below the top bar (kernel/wm.h);
- * its close button or Home comes back here. */
+ *   - the top bar, always: Home (shows the desktop: minimises every window)
+ *     and the focused app's name on the left, the day, date and time in the
+ *     middle, a power menu (Restart; Shut Down waits for ACPI in Phase 5) on
+ *     the right
+ *   - the wallpaper, with the apps' windows floating over it (kernel/wm.h)
+ *   - the dock: the favourite apps (pinned), then a line and any other app
+ *     that's open, then Show Apps (the app menu: a grid of every app). A dot
+ *     under an app says it's open: grey when minimised, white when on screen,
+ *     a long pill for the focused one. While a maximised window is in front
+ *     the dock hides; pushing the pointer against the bottom edge brings it
+ *     back until the pointer leaves it.
+ *
+ * Everything moves on springs, so it overshoots a little and settles: the
+ * dock's icons sliding and popping in and out, its dots, the dock rising.
+ * Windows grow out of the icon that opened them, shrink into the dock when
+ * minimised and back out when restored, and fade away when closed.
+ *
+ * The shell is also the compositor: shell_damage() marks part of the screen
+ * changed and shell_flush() redraws those parts from the bottom up
+ * (wallpaper, windows, dock, top bar, menus) and shows them. */
 #ifndef LKX_DESKTOP_H
 #define LKX_DESKTOP_H
 
 #include <stdint.h>
 #include "kernel/input.h"
 
-/* After boot: draw the top bar, and the desktop unless a window is already
- * open (the self-tests open one). */
+struct app;
+struct wm_window;
+
+/* After boot: the apps, the clock and the wallpaper, then the desktop. */
 void desktop_start(void);
 
-/* Redraw the whole desktop (unless a window is open) and present. */
-void desktop_show(void);
-
-/* The theme or wallpaper changed: redraw the top bar (and the desktop, if
- * it's showing). */
+/* The theme or wallpaper changed: redraw everything. */
 void desktop_refresh(void);
 
-/* Pointer input, every packet. Returns 1 if the shell took it (the top bar,
- * the power menu, the desktop); 0 means it's the open window's. */
-int desktop_input_mouse(int x, int y, uint8_t buttons);
+/* Pointer input, every packet: the shell's (top bar, menus, dock, app menu)
+ * or passed on to the windows. */
+void desktop_input_mouse(int x, int y, uint8_t buttons);
 
-/* Keys the shell takes (Esc closes the power menu). 1 if taken. */
+/* Keys the shell takes (Esc closes the power menu or the app menu). 1 if
+ * taken. */
 int desktop_input_key(const struct key_event *k);
 
-/* Call often: once a second (rtc0's tick) it updates the clock if the
- * minute changed. */
+/* Call often: the clock (once a second, rtc0's tick) and the dock's
+ * animations. */
 void desktop_tick(void);
+/* 1 while something is animating: the input loop mustn't sleep. */
+int desktop_busy(void);
 
-/* Hand the open window's events to its app. The close button closes the
- * app and shows the desktop. Events of a window no app owns (the self-tests
- * open one) are logged. */
+/* Hand the kernel apps' window events (Log's) to them; a window no app owns
+ * (the self-tests open one) has its events logged. */
 void desktop_handle_events(void);
+
+/* A ring 3 app ended (kernel/lkx.c): its window closes. */
+void desktop_app_ended(const struct app *a, struct wm_window *w);
 
 #endif

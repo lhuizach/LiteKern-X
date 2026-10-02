@@ -3,5 +3,10 @@
   "icon": "files",
   "entry": "files.lkx",
   "version": "1.0",
-  "order": 1
+  "order": 1,
+  "pinned": 1,
+  "width": 760,
+  "height": 500,
+  "min_width": 480,
+  "min_height": 360
 }

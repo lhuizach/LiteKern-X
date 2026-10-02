@@ -30,9 +30,9 @@ int wallpaper_list(char names[][32], int max);
 /* A w x h preview of one, 0x00RRGGBB, for the Settings app. */
 int wallpaper_thumb(const char *name, uint32_t *out, int w, int h);
 
-/* Draw the background into the screen's (x, y, w, h), darkened by `dim`
- * (0..255, 0 = not at all). */
-void wallpaper_draw(int x, int y, int w, int h, uint32_t dim);
+/* Draw the background into dst, which shows the screen from (ox, oy),
+ * darkened by `dim` (0..255, 0 = not at all). */
+void wallpaper_draw(struct gfx_surface *dst, int ox, int oy, uint32_t dim);
 
 /* The background colour at the screen's bottom-right corner (for tests). */
 uint32_t wallpaper_corner(void);
