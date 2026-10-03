@@ -45,6 +45,7 @@ make -s BUILD=build/test-disk EXTRA_CFLAGS=-DLKX_SELFTEST_DISK \
 rm -f build/test-apps/litekernx.img build/test-apps/stage1.bin     # FAT_MB isn't a make dependency
 make -s BUILD=build/test-apps FAT_MB=64 "EXTRA_APPS=tests/apps/crash tests/apps/badcalls tests/apps/hang" \
     build/test-apps/litekernx.img >/dev/null || exit 1
+make -s BUILD=build/test-saver SCREENSAVER=2 build/test-saver/litekernx.img >/dev/null || exit 1
 make -s BUILD=build/test-widgets EXTRA_CFLAGS=-DLKX_SELFTEST_WIDGETS \
     EXTRA_KERNEL_SRCS=tests/kernel/selftest_widgets.c build/test-widgets/litekernx.img >/dev/null || exit 1
 
@@ -123,6 +124,7 @@ NAPPS=$(( $(ls -d apps/*/ | wc -l) + 1 ))      # the apps/ folders, then Log
 FILES_X=$(dock_x 0 2) LOG_X=$(dock_x 1 2) SHOWAPPS_X=$(dock_x 2 2) DOCK_Y=728 GRID_Y=363
 CALC_TILE=$(grid_x 1 "$NAPPS") SETTINGS_TILE=$(grid_x 2 "$NAPPS") LOG_TILE=$(grid_x 3 "$NAPPS")
 FILES_ICON="$((FILES_X - 30)),698,$((FILES_X + 30)),758"      # the folder icon in the dock
+FILES_BLUE=63a0e9                                             # its front (assets/icons/files.png)
 FILES_CLOSE=$(win_close 760 500) LOG_CLOSE=$(win_close 760 480)
 CALC_CLOSE=$(win_close 420 548) SETTINGS_CLOSE=$(win_close 944 552)
 
@@ -164,7 +166,7 @@ selftest_done_re='^selftest: drivers [0-9]+/[0-9]+ passed.?$|^PANIC: .*\).?$'
 user_done_re='^selftest: user [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$'
 panic_re='^PANIC: .*[0-9a-f)].?$'
 
-SCREEN="corner= has=$WHITE@0,0,120,30 has=3584e4@$FILES_ICON" boot_until build/litekernx.img "$done_re" 20
+SCREEN="corner= has=$WHITE@0,0,120,30 has=$FILES_BLUE@$FILES_ICON" boot_until build/litekernx.img "$done_re" 20
 check "boots to ready with per-phase timing" \
     '^LiteKern X$' \
     '^\[boot\] tsc=[0-9]+ MHz' \
@@ -226,7 +228,7 @@ check "boots to the desktop (top bar, dock, wallpaper) within the 5 s budget" \
     '^lkx: Files \(apps/files/files\.lkx, [0-9]+ KB\)$' \
     "^screen: corner $DESKTOP$" \
     "^screen: has $WHITE in 0,0,120,30: yes$" \
-    "^screen: has 3584e4 in $FILES_ICON: yes$" \
+    "^screen: has $FILES_BLUE in $FILES_ICON: yes$" \
     '^fb0: write-combining on \(MTRR 0xfd000000-0xfd3fffff\)$'
 
 SCREEN="corner= has=ffffff@16,16,200,32 has=e8a33d@376,48,428,88 has=48a6e8@16,110,500,290" \
@@ -322,7 +324,7 @@ check "desktop: logged clicks don't draw the log over it" \
 # above). Top bar: Home 6-46, power 978-1018; y 3-27. Power menu: Restart
 # 844-1012 x 40-74.
 path; go "$FILES_X" "$DOCK_Y"; click; add sleep:1; go $FILES_CLOSE; click
-KEYS="$P" KEYS_DONE='^desktop: close Files' SCREEN="corner= has=3584e4@$FILES_ICON" \
+KEYS="$P" KEYS_DONE='^desktop: close Files' SCREEN="corner= has=$FILES_BLUE@$FILES_ICON" \
     boot_until build/litekernx.img "$done_re" 20
 check "desktop: the dock opens Files (a ring 3 app) in a window; its close button ends it" \
     '^desktop: open Files$' \
@@ -332,7 +334,7 @@ check "desktop: the dock opens Files (a ring 3 app) in a window; its close butto
     '^lkx: Files exited \(0\)$' \
     '^desktop: close Files$' \
     "^screen: corner $DESKTOP$" \
-    "^screen: has 3584e4 in $FILES_ICON: yes$" \
+    "^screen: has $FILES_BLUE in $FILES_ICON: yes$" \
     '!PANIC'
 
 boot_until build/test-widgets/litekernx.img '^selftest: widgets [0-9]+/[0-9]+ passed.?$|^PANIC: .*[0-9a-f)].?$' 20
@@ -439,12 +441,12 @@ check "windows: dragged by the header bar; double-click maximises; the dock hide
 path; go "$FILES_X" "$DOCK_Y"; click; add sleep:1.5
 go $((FILES_X + 300)) 160; click; add gap:0.05; click; add gap:0.15 sleep:1.5
 go 512 767; add sleep:1.5
-KEYS="$P" KEYS_DONE='^dock: shown \(bottom edge\)' SCREEN="has=3584e4@$FILES_ICON" \
+KEYS="$P" KEYS_DONE='^dock: shown \(bottom edge\)' SCREEN="has=$FILES_BLUE@$FILES_ICON" \
     boot_until build/litekernx.img "$done_re" 30
 check "windows: over a maximised window, the bottom edge brings the dock back" \
     '^desktop: maximise Files$' \
     '^dock: shown \(bottom edge\)$' \
-    "^screen: has 3584e4 in $FILES_ICON: yes$" \
+    "^screen: has $FILES_BLUE in $FILES_ICON: yes$" \
     '!PANIC'
 
 # Settings (Appearance), from the app menu, laid out like
@@ -466,6 +468,20 @@ check "Settings: style, accent and background change at once" \
     '^appearance: light, accent teal, wallpaper crossing$' \
     '^appearance: light, accent teal, wallpaper none$' \
     '^screen: has fafafb in 60,300,240,600: yes$' \
+    '!PANIC'
+
+# Settings' Screen Saver choices, to the right of the style cards (from x
+# 536, y 219; 120x34 pills, 3 a row): "1 min" sets the idle time, Preview
+# shows it at once, and moving the pointer ends it.
+path; go "$SHOWAPPS_X" "$DOCK_Y"; click; go "$SETTINGS_TILE" "$GRID_Y"; click; add sleep:1.5
+go 728 236; click; add sleep:0.5; go 596 324; click; add sleep:1.5; go 600 400; add sleep:0.5
+KEYS="$P" KEYS_DONE='^screensaver: off' boot_until build/litekernx.img "$done_re" 30
+check "Settings: the screen saver's idle time, and a preview" \
+    '^user: settings: screen saver 1 min$' \
+    '^appearance: screen saver after 60 s$' \
+    '^appearance: screen saver preview$' \
+    '^screensaver: on \(idle 0 s\)$' \
+    '^screensaver: off after [0-9]+ s: [1-9][0-9]* frames' \
     '!PANIC'
 
 # Calculator: sums typed on the keyboard, plus one with its own buttons (the
@@ -675,6 +691,22 @@ check "follows a PCI-to-PCI bridge to its secondary bus" \
     '^pci 00:[0-9a-f]{2}\.0 1b36:0001 class 06\.04\.00 rev [0-9a-f]{2} PCI bridge$' \
     '^pci 01:03\.0 1af4:1005 ' \
     '^pci: [0-9]+ devices on 2 buses$'
+
+# The screen saver (kernel/screensaver.h), after 2 s without input here: on
+# screen, then a key wakes the desktop and the key isn't passed on.
+saver_on_re='^screensaver: on \(idle [0-9]+ s\).?$|^PANIC: .*[0-9a-f)].?$'
+SCREEN="corner=000000" boot_until build/test-saver/litekernx.img "$saver_on_re" 20
+check "screen saver: starts after the idle time, covers the desktop" \
+    '^screensaver: on \(idle 2 s\)$' \
+    '^screen: corner 000000$' \
+    '!PANIC'
+KEYS="a" KEYS_DONE='^screensaver: off' SCREEN="corner=" \
+    boot_until build/test-saver/litekernx.img "$saver_on_re" 20
+check "screen saver: a key brings the desktop back, and is only a wake-up" \
+    '^screensaver: off after [0-9]+ s: [1-9][0-9]* frames \([0-9]+ fps\), drawing took [0-9]+\.[0-9]% of the time$' \
+    "^screen: corner $DESKTOP$" \
+    "!kbd: key 0x01e" \
+    '!PANIC'
 
 boot_until build/test-fault/litekernx.img "$done_re" 20
 check "catches and reports a CPU exception (#UD self-test)" \

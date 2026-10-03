@@ -8,6 +8,7 @@
 #include "kernel/cursor.h"
 #include "kernel/driver.h"
 #include "kernel/screen.h"
+#include "kernel/screensaver.h"
 #include "kernel/fb.h"
 #include "kernel/idle.h"
 #include "kernel/lkx.h"
@@ -114,19 +115,24 @@ void idle_step(int busy)
     struct key_event keys[8];
     struct mouse_event moves[16];
     desktop_tick();         /* the clock: rtc0's IRQ 8 wakes the hlt once a second */
+    screensaver_poll();     /* its next frame (rtc0 wakes the hlt 64 times a second then),
+                             * or start it once the idle time is up */
     /* Check for events with interrupts off, so one arriving between the
      * check and the hlt can't be missed: `sti; hlt` is atomic. */
     __asm__ volatile("cli");
     int nk = dev_read(in.kbd, keys, sizeof(keys));
     int nm = dev_read(in.mouse, moves, sizeof(moves));
     if (nk <= 0 && nm <= 0 && !in.moved) {
-        if (busy || desktop_busy())
+        if (busy || (desktop_busy() && !screensaver_active()))
             __asm__ volatile("sti; pause");     /* an app ran or something moves: no sleeping */
         else
             __asm__ volatile("sti; hlt");
         return;
     }
     __asm__ volatile("sti");
+    /* Any key or touch while the screen saver shows only wakes the screen. */
+    if ((nk > 0 || nm > 0) && screensaver_input())
+        return;
 
     /* After each key and click, the apps (and kernel apps) answer before the
      * next one is handled: what a click does can depend on what the one

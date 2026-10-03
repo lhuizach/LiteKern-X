@@ -24,6 +24,7 @@ Build-time choices (settings aren't saved across restarts yet):
 ```
 wsl make STYLE=light ACCENT=teal WALLPAPER=dusk SPLASH=log
 ```
+The screen saver (glowing ribbons, `kernel/screensaver.h`) starts after 5 minutes without input; `SCREENSAVER=<seconds>` changes that, and `SCREENSAVER=0` turns it off. To see it straight away: `wsl make run SCREENSAVER=5`.
 
 ## VirtualBox
 There's a second dev VM, `LiteKern X`, in your Windows VirtualBox, with the same Eee PC-like profile as the QEMU VM plus the real panel's **1024×600** mode (QEMU can't do that one). It's driven from WSL by [`vm/vbox.sh`](../vm/vbox.sh):

@@ -38,6 +38,9 @@
 #define SYS_WALLPAPER_THUMB 16  /* ebx: name, ecx: uint32_t * out, edx: w, esi: h (<= 256 x 160) */
 #define SYS_FS_READ         17  /* ebx: volume, ecx: folder path, edx: name, esi: buffer,
                                  * edi: length. Reads from the start; returns the bytes read */
+#define SYS_SCREENSAVER_SET 18  /* ebx: seconds without input before the screen saver
+                                 * starts (0 = never, at most 3600); or ecx = 1: show it
+                                 * now (a preview; any input ends it) */
 
 /* --- memory -------------------------------------------------------------------- */
 #define K86_APP_BASE        0x80000000u     /* where an app's image is loaded */
@@ -116,6 +119,7 @@ struct k86_appearance {
     } accents[K86_MAX_ACCENTS];
     int32_t nwallpapers;
     char wallpapers[K86_MAX_WALLPAPERS][32];
+    int32_t screensaver_s;  /* seconds without input before it starts; 0 = never */
 };
 
 struct k86_dirent {

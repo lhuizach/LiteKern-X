@@ -7,13 +7,19 @@
  *   read   one struct rtc_time: the time as of the last second's tick
  *   ioctl  RTC_GET_TICKS (uint32_t *): seconds counted since init, one per
  *          IRQ 8 "update ended" interrupt, so the shell can wake once a
- *          second without a timer */
+ *          second without a timer
+ *   ioctl  RTC_SET_RATE (const uint32_t *hz): also raise IRQ 8 hz times a
+ *          second (a power of two, 2..8192), or stop with 0. The kernel has
+ *          no other timer: this is what wakes a `hlt` for each frame of an
+ *          animation (the screen saver) instead of spinning. -EINVAL for
+ *          other rates */
 #ifndef LKX_RTC_H
 #define LKX_RTC_H
 
 #include <stdint.h>
 
 #define RTC_GET_TICKS 1
+#define RTC_SET_RATE  2
 
 struct rtc_time {
     uint16_t year;          /* e.g. 2026 */

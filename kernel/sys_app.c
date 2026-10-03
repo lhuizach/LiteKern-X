@@ -6,6 +6,7 @@
 #include "kernel/lkx.h"
 #include "kernel/kern86_abi.h"
 #include "kernel/printk.h"
+#include "kernel/screensaver.h"
 #include "kernel/storage.h"
 #include "kernel/string.h"
 #include "kernel/theme.h"
@@ -240,6 +241,24 @@ static int appearance(uint32_t out)
         a->naccents++;
     }
     a->nwallpapers = wallpaper_list(a->wallpapers, K86_MAX_WALLPAPERS);
+    a->screensaver_s = (int32_t)screensaver_timeout();
+    return 0;
+}
+
+static int screensaver_set(uint32_t seconds, uint32_t preview)
+{
+    if (preview) {                      /* show it now; any input ends it */
+        kprintf("appearance: screen saver preview\n");
+        screensaver_start();
+        return 0;
+    }
+    if (seconds > 3600)
+        return -EINVAL;
+    screensaver_set_timeout(seconds);
+    if (seconds)
+        kprintf("appearance: screen saver after %u s\n", seconds);
+    else
+        kprintf("appearance: screen saver off\n");
     return 0;
 }
 
@@ -311,6 +330,7 @@ int sys_app(uint32_t nr, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uin
     case SYS_APPEARANCE_SET: return appearance_set((int)a1, (int)a2, a3);
     case SYS_WALLPAPER_THUMB: return wallpaper_thumbnail(a1, a2, (int)a3, (int)a4);
     case SYS_FS_READ:        return fs_read(a1, a2, a3, a4, a5);
+    case SYS_SCREENSAVER_SET: return screensaver_set(a1, a2);
     default:                 return -ENOSYS;
     }
 }

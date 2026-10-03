@@ -4,7 +4,9 @@
  * The time is read once at init (waiting out an update in progress) and
  * then again from the "update ended" interrupt, which the chip raises right
  * after it has updated its registers once a second: registers are always
- * valid then, and the interrupt doubles as a 1 Hz tick. */
+ * valid then, and the interrupt doubles as a 1 Hz tick. On request the chip
+ * also raises its periodic interrupt (RTC_SET_RATE), which only wakes the
+ * CPU: the handler acknowledges it and returns. */
 #include "drivers/builtin.h"
 #include "kernel/errno.h"
 #include "kernel/io.h"
@@ -28,6 +30,8 @@
 #define A_UIP       0x80    /* update in progress */
 #define B_24H       0x02
 #define B_BINARY    0x04
+#define A_RATE      0x0f    /* periodic rate: 32768 >> (rate - 1) Hz */
+#define B_PIE       0x40    /* periodic interrupt enable */
 #define B_UIE       0x10    /* update-ended interrupt enable */
 #define C_UF        0x10    /* an update ended */
 #define HOUR_PM     0x80    /* 12-hour mode */
@@ -131,21 +135,46 @@ static int rtc_read(device_t *dev, void *buf, size_t len)
     return (int)sizeof(struct rtc_time);
 }
 
+static int set_rate(uint32_t hz)
+{
+    int rate = 0;
+    for (int r = 3; r <= 15; r++)
+        if (hz == (32768u >> (r - 1)))
+            rate = r;
+    if (hz && !rate)
+        return -EINVAL;
+    uint32_t flags = irq_save();
+    if (rate) {
+        set_reg(REG_A, (uint8_t)((reg(REG_A) & ~A_RATE) | rate));
+        set_reg(REG_B, (uint8_t)(reg(REG_B) | B_PIE));
+    } else {
+        set_reg(REG_B, (uint8_t)(reg(REG_B) & ~B_PIE));
+    }
+    reg(REG_C);
+    irq_restore(flags);
+    return 0;
+}
+
 static int rtc_ioctl(device_t *dev, unsigned cmd, void *arg)
 {
     (void)dev;
-    if (cmd != RTC_GET_TICKS)
-        return -ENOSYS;
     if (!arg)
-        return -EINVAL;
-    *(uint32_t *)arg = ticks;
-    return 0;
+        return cmd == RTC_GET_TICKS || cmd == RTC_SET_RATE ? -EINVAL : -ENOSYS;
+    switch (cmd) {
+    case RTC_GET_TICKS:
+        *(uint32_t *)arg = ticks;
+        return 0;
+    case RTC_SET_RATE:
+        return set_rate(*(const uint32_t *)arg);
+    default:
+        return -ENOSYS;
+    }
 }
 
 static void rtc_shutdown(device_t *dev)
 {
     (void)dev;
-    set_reg(REG_B, (uint8_t)(reg(REG_B) & ~B_UIE));
+    set_reg(REG_B, (uint8_t)(reg(REG_B) & ~(B_UIE | B_PIE)));
     irq_unregister(RTC_IRQ);
 }
 

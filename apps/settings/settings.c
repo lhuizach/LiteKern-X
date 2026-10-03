@@ -1,10 +1,11 @@
 /* LiteKern X — Settings: the Appearance page (Phase 3 §5), like GNOME's.
  *
  * Style (dark or light, shown as two little window previews), accent colour
- * (GNOME's presets), and background (the wallpapers in the ramdisk, or
- * none). A click applies it at once: the kernel redraws the shell and sends
- * every window K86_EVENT_THEME. Not saved across a restart yet (Phase 5);
- * the build-time defaults come from `make STYLE= ACCENT= WALLPAPER=`. */
+ * (GNOME's presets), background (the wallpapers in the ramdisk, or none),
+ * and when the screen saver starts (or a preview of it). A click applies it
+ * at once: the kernel redraws the shell and sends every window
+ * K86_EVENT_THEME. Not saved across a restart yet (Phase 5); the build-time
+ * defaults come from `make STYLE= ACCENT= WALLPAPER= SCREENSAVER=`. */
 #include "kernel/string.h"
 #include "kernel/text.h"
 #include "kernel/theme.h"
@@ -24,17 +25,25 @@ static struct k86_appearance app;
 static uint32_t thumbs[K86_MAX_WALLPAPERS][THUMB_W * THUMB_H];
 static int have_thumb[K86_MAX_WALLPAPERS];
 
+/* The screen saver's choices, in seconds (0: never). */
+static const int saver_s[] = { 0, 60, 120, 300, 600, 1800 };
+static const char *const saver_label[] = { "Off", "1 min", "2 min", "5 min", "10 min", "30 min" };
+#define NSAVER 6
+#define CHIP_W 120
+#define CHIP_H 34
+#define CHIP_GAP 12
+
 /* Clickable things: kind + index, and where they are. */
-enum kind { K_STYLE, K_ACCENT, K_WALLPAPER, K_NONE_WALLPAPER };
+enum kind { K_STYLE, K_ACCENT, K_WALLPAPER, K_NONE_WALLPAPER, K_SAVER, K_PREVIEW };
 struct spot {
     enum kind kind;
     int index;
     struct gfx_rect r;
 };
-static struct spot spots[2 + K86_MAX_ACCENTS + K86_MAX_WALLPAPERS + 1];
+static struct spot spots[2 + K86_MAX_ACCENTS + K86_MAX_WALLPAPERS + 1 + NSAVER + 1];
 static int nspots, hover = -1, pressed = -1;
 
-static int x0, y_style, y_accent, y_background;
+static int x0, x_saver, y_style, y_accent, y_background;
 
 static void add_spot(enum kind k, int i, struct gfx_rect r)
 {
@@ -65,6 +74,14 @@ static void layout(void)
     for (int i = 0; i < app.nwallpapers; i++)
         add_spot(K_WALLPAPER, i, (struct gfx_rect){ x0 + (i + 1) * (THUMB_W + GAP),
                                                     y_background + lh + 10, THUMB_W, THUMB_H });
+    /* The screen saver: to the right of the style cards, three choices a
+     * row, then Preview. */
+    x_saver = x0 + 2 * (CARD_W + GAP) + GAP;
+    int sy = y_style + lh + 10;
+    for (int i = 0; i < NSAVER; i++)
+        add_spot(K_SAVER, i, (struct gfx_rect){ x_saver + (i % 3) * (CHIP_W + CHIP_GAP),
+                                                sy + (i / 3) * (CHIP_H + 10), CHIP_W, CHIP_H });
+    add_spot(K_PREVIEW, 0, (struct gfx_rect){ x_saver, sy + 2 * (CHIP_H + 10), CHIP_W, CHIP_H });
     (void)t;
 }
 
@@ -150,8 +167,23 @@ static void draw(void)
                       s->r.y + THUMB_H + 8, label, TEXT_BODY, selected ? t->fg : t->fg_dim);
             break;
         }
+        case K_SAVER:
+        case K_PREVIEW: {
+            /* Pill buttons: the chosen one in the accent colour. */
+            int selected = s->kind == K_SAVER && app.screensaver_s == saver_s[s->index];
+            uint32_t bg = selected ? t->accent_bg
+                        : i == pressed && i == hover ? t->button_active
+                        : lit ? t->button_hover : t->button_bg;
+            const char *label = s->kind == K_SAVER ? saver_label[s->index] : "Preview";
+            gfx_fill_round_rect(&canvas, s->r.x, s->r.y, s->r.w, s->r.h, s->r.h / 2, bg);
+            text_draw(&canvas, s->r.x + (s->r.w - text_width(label, TEXT_BOLD)) / 2,
+                      s->r.y + (s->r.h - text_height(TEXT_BOLD)) / 2, label, TEXT_BOLD,
+                      selected ? t->accent_fg : t->fg);
+            break;
+        }
         }
     }
+    text_draw(&canvas, x_saver, y_style, "Screen Saver", TEXT_BOLD, t->fg);
     text_draw(&canvas, x0, y_accent, "Accent Color", TEXT_BOLD, t->fg);
     text_draw(&canvas, x0, y_background, "Background", TEXT_BOLD, t->fg);
     /* At the bottom, but never over the wallpapers' names above it. */
@@ -193,6 +225,16 @@ static void choose(const struct spot *s)
         k86_log("settings: background none");
         k86_appearance_set(-1, -1, "");
         break;
+    case K_SAVER:
+        k86_logf("settings: screen saver %s", saver_label[s->index]);
+        k86_screensaver_set(saver_s[s->index]);
+        k86_appearance(&app);
+        draw();                     /* no theme change: redraw here */
+        return;
+    case K_PREVIEW:
+        k86_log("settings: screen saver preview");
+        k86_screensaver_preview();
+        return;
     }
     k86_appearance(&app);           /* the redraw comes with K86_EVENT_THEME */
 }

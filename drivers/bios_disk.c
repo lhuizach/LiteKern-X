@@ -22,7 +22,10 @@
 #define PACKET      0x420u
 #define BUFFER      0x1000u     /* offset: segment 0x2000, offset 0x1000 */
 #define CHUNK       64u         /* sectors per call (32 KiB, inside one 64 KiB segment) */
+#define SMALL_CHUNK 8u          /* when a whole chunk keeps failing */
+#define TRIES       3           /* per call, with a drive reset between */
 
+#define INT13_RESET      0x00
 #define INT13_CHECK_EXT  0x41
 #define INT13_READ       0x42
 #define INT13_WRITE      0x43
@@ -71,18 +74,55 @@ static int bios_call(struct regs in, struct params *out)
     return (p->out_flags & FLAG_CARRY) ? (p->out_ax >> 8) | 0x100 : 0;
 }
 
-static int transfer(uint8_t fn, uint32_t lba, uint32_t count)
+/* One INT 13h transfer, as it is. The BIOS's AH (| 0x100) on failure, else 0. */
+static int transfer_once(uint8_t fn, uint32_t lba, uint32_t count)
 {
+#ifdef LKX_FAKE_TIMEOUTS
+    static uint32_t calls;
+    if (count == CHUNK && calls++ % 2 == 0)
+        return 0x180;                       /* pretend the BIOS timed out */
+#endif
     struct dap *d = (struct dap *)(low + PACKET);
     *d = (struct dap){ .size = sizeof(struct dap), .count = (uint16_t)count, .offset = BUFFER,
                        .segment = THUNK_BASE >> 4, .lba = lba };
-    int err = bios_call((struct regs){ .ax = (uint16_t)(fn << 8), .dx = drive, .si = PACKET }, 0);
-    if (err) {
-        kprintf("boot0: BIOS %s of %u sectors at %u failed (AH=0x%02x)\n",
-                fn == INT13_READ ? "read" : "write", count, lba, err & 0xff);
-        return -EIO;
+    return bios_call((struct regs){ .ax = (uint16_t)(fn << 8), .dx = drive, .si = PACKET }, 0);
+}
+
+/* The same, with what real bootloaders do: on an error (the EeePC's BIOS
+ * answers AH=0x80, "timeout", when the stick has been idle a while), reset
+ * the drive and try again; if a whole chunk keeps failing, go a few sectors
+ * at a time. Logged when it took more than one try. */
+static int transfer(uint8_t fn, uint32_t lba, uint32_t count)
+{
+    int err = 0;
+    for (int attempt = 0; attempt < TRIES; attempt++) {
+        if (attempt)
+            bios_call((struct regs){ .ax = INT13_RESET << 8, .dx = drive }, 0);
+        err = transfer_once(fn, lba, count);
+        if (!err) {
+            if (attempt)
+                kprintf("boot0: BIOS %s of %u sectors at %u worked on try %d\n",
+                        fn == INT13_READ ? "read" : "write", count, lba, attempt + 1);
+            return 0;
+        }
     }
-    return 0;
+    if (count > SMALL_CHUNK && fn == INT13_READ) {
+        /* Smaller pieces; the buffer stays where the caller expects it. */
+        static uint8_t keep[CHUNK * BLK_SECTOR];
+        for (uint32_t done = 0; done < count; done += SMALL_CHUNK) {
+            uint32_t n = count - done < SMALL_CHUNK ? count - done : SMALL_CHUNK;
+            if (transfer(fn, lba + done, n))
+                goto failed;
+            memcpy(keep + done * BLK_SECTOR, low + BUFFER, n * BLK_SECTOR);
+        }
+        memcpy(low + BUFFER, keep, count * BLK_SECTOR);
+        kprintf("boot0: BIOS read of %u sectors at %u worked %u at a time\n", count, lba, SMALL_CHUNK);
+        return 0;
+    }
+failed:
+    kprintf("boot0: BIOS %s of %u sectors at %u failed (AH=0x%02x)\n",
+            fn == INT13_READ ? "read" : "write", count, lba, err & 0xff);
+    return -EIO;
 }
 
 static int bios_disk_init(device_t *dev)

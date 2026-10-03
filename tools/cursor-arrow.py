@@ -18,6 +18,10 @@ ZOOM = 16
 # notch, round the tail, back up to the notch and out to the head's corner.
 BODY = [(2.0, 1.6), (2.0, 18.4), (6.0, 14.9), (9.2, 21.0),
         (11.9, 19.8), (8.7, 13.9), (13.6, 13.9)]
+# The arrow's size, scaled about its tip (so the hotspot stays put); the
+# white edge stays 1px. 0.9 since 2026-10-03 (the user: 10% smaller).
+SCALE = 0.9
+BODY = [(BODY[0][0] + (x - BODY[0][0]) * SCALE, BODY[0][1] + (y - BODY[0][1]) * SCALE) for x, y in BODY]
 
 
 def grow(im, px):

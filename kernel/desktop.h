@@ -33,6 +33,14 @@ struct wm_window;
 /* After boot: the apps, the clock and the wallpaper, then the desktop. */
 void desktop_start(void);
 
+/* 1 once desktop_start() has finished. */
+int desktop_started(void);
+
+/* Something else owns the whole screen (the screen saver, 1): the shell
+ * stops drawing, keeping track of what changed. 0 hands the screen back:
+ * everything is redrawn, the pointer included. */
+void desktop_cover(int on);
+
 /* The theme or wallpaper changed: redraw everything. */
 void desktop_refresh(void);
 

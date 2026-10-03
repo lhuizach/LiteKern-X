@@ -79,6 +79,18 @@ static inline int k86_appearance_set(int style, int accent, const char *wallpape
     return k86_call(SYS_APPEARANCE_SET, (uint32_t)style, (uint32_t)accent, (uint32_t)wallpaper, 0);
 }
 
+/* Seconds without input before the screen saver starts; 0 turns it off. */
+static inline int k86_screensaver_set(int seconds)
+{
+    return k86_call(SYS_SCREENSAVER_SET, (uint32_t)seconds, 0, 0, 0);
+}
+
+/* Show the screen saver now (any input ends it). */
+static inline int k86_screensaver_preview(void)
+{
+    return k86_call(SYS_SCREENSAVER_SET, 0, 1, 0, 0);
+}
+
 static inline int k86_wallpaper_thumb(const char *name, uint32_t *out, int w, int h)
 {
     return k86_call(SYS_WALLPAPER_THUMB, (uint32_t)name, (uint32_t)out, (uint32_t)w, (uint32_t)h);

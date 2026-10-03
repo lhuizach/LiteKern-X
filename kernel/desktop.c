@@ -54,6 +54,7 @@
 #define A_DIM       90      /* black over the wallpaper while the app menu is open */
 
 static int started;         /* desktop_start() ran: until then, the windows get the pointer */
+static int covered;         /* the screen saver has the screen (desktop_cover) */
 static int menu_open;
 static int grid_open;       /* the app menu */
 static struct rtc_time clock_shown;
@@ -164,8 +165,9 @@ static void compose(struct gfx_rect r)
 
 void shell_flush(void)
 {
-    if (flushing || !screen_ready())
-        return;                 /* a log line while composing: the loop below gets it */
+    if (flushing || !screen_ready() || covered)
+        return;                 /* a log line while composing: the loop below gets it;
+                                 * covered: the damage waits for desktop_cover(0) */
     flushing = 1;
     while (ndmg) {
         struct gfx_rect list[MAX_DAMAGE];
@@ -1211,6 +1213,21 @@ void desktop_start(void)
     /* The boot budget's finish line (docs/BOOT-BUDGET.md: <= 5 s from stage 1). */
     kprintf("[boot] desktop t=%u\n", uptime_ms());
     kprintf("desktop: ready\n");     /* everything is up: the tests wait for this */
+}
+
+int desktop_started(void)
+{
+    return started;
+}
+
+void desktop_cover(int on)
+{
+    covered = on;
+    if (on)
+        return;
+    cursor_refresh();
+    damage_all();
+    shell_flush();
 }
 
 void desktop_refresh(void)
