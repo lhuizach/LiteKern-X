@@ -169,6 +169,8 @@ void shell_flush(void)
         return;                 /* a log line while composing: the loop below gets it;
                                  * covered: the damage waits for desktop_cover(0) */
     flushing = 1;
+    uint32_t t0 = uptime_ms();
+    int drew = ndmg > 0;
     while (ndmg) {
         struct gfx_rect list[MAX_DAMAGE];
         int n = ndmg;
@@ -181,6 +183,18 @@ void shell_flush(void)
     }
     screen_present();
     flushing = 0;
+    /* How a drag (or resize) went, for measuring on the EeePC: logged when
+     * it ends. */
+    static uint32_t drag_redraws, drag_slowest;
+    if (wm_grabbed() && drew) {
+        uint32_t dt = uptime_ms() - t0;
+        drag_redraws++;
+        if (dt > drag_slowest)
+            drag_slowest = dt;
+    } else if (!wm_grabbed() && drag_redraws) {
+        kprintf("desktop: drag: %u redraws, slowest %u ms\n", drag_redraws, drag_slowest);
+        drag_redraws = drag_slowest = 0;
+    }
 }
 
 /* --- springs: everything in the dock moves on one ------------------------------------
@@ -1281,8 +1295,7 @@ void desktop_input_mouse(int x, int y, uint8_t buttons)
     track_peek(x, y);
     if (wm_grabbed() && !pressed.kind) {    /* a drag or a press in a window */
         wm_input_mouse(x, y, buttons);
-        shell_flush();
-        return;
+        return;                 /* the input loop redraws once per batch */
     }
 
     struct hit h = hit_at(x, y);
@@ -1320,7 +1333,7 @@ void desktop_input_mouse(int x, int y, uint8_t buttons)
     } else if (!pressed.kind && h.kind == H_NONE && !grid_open) {
         wm_input_mouse(x, y, buttons);      /* hover and the rest, for the windows */
     }
-    shell_flush();
+    /* No redraw here: the input loop does one per batch of packets. */
 }
 
 int desktop_input_key(const struct key_event *k)

@@ -161,13 +161,23 @@ void idle_step(int busy)
         }
         cursor_move_to(x, y);
     }
-    for (int i = 0; i < nm / (int)sizeof(moves[0]); i++) {
+    int npkt = nm / (int)sizeof(moves[0]);
+    for (int i = 0; i < npkt; i++) {
         in.x += moves[i].dx;
         in.y += moves[i].dy;
         in.x = in.x < 0 ? 0 : in.x >= in.w ? in.w - 1 : in.x;
         in.y = in.y < 0 ? 0 : in.y >= in.h ? in.h - 1 : in.y;
-        /* Per packet, so no click is lost: the shell (top bar, menu,
-         * dock) passes what isn't its own to the windows. */
+        /* Moves with the same buttons as the next packet are merged into it:
+         * only where the pointer ends up matters, and each step of a drag
+         * costs a redraw the Atom can't keep up with at 200 a second. Every
+         * button change still goes through on its own, so no click is lost.
+         * The shell (top bar, menu, dock) passes what isn't its own to the
+         * windows. */
+        if (i + 1 < npkt && moves[i + 1].buttons == moves[i].buttons &&
+            moves[i].buttons == in.buttons) {
+            in.moved |= moves[i].dx || moves[i].dy;
+            continue;
+        }
         desktop_input_mouse(in.x, in.y, moves[i].buttons);
         in.moved |= moves[i].dx || moves[i].dy;
         if (moves[i].buttons != in.buttons) {       /* clicks are always logged */
@@ -180,6 +190,7 @@ void idle_step(int busy)
         }
     }
     desktop_handle_events();
+    shell_flush();          /* one redraw for the whole batch */
     if (in.moved && uptime_ms() - in.last_log >= MOUSE_LOG_MS) {
         log_pointer(in.x, in.y, in.buttons, 0);
         in.moved = 0;

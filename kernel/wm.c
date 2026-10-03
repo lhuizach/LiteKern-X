@@ -43,6 +43,10 @@ struct wm_window {
     uint32_t *buf;              /* the content's pixels: capacity buf_w x buf_h */
     int buf_w, buf_h;
     uint32_t buf_bytes;
+    uint8_t *shadow;            /* its shadow's darkness per pixel (shadow_map) */
+    uint32_t shadow_bytes;
+    int shadow_w, shadow_h;     /* the window size it was made for ... */
+    uint32_t shadow_strength;   /* ... and how dark (0: not made yet) */
     struct gfx_surface content;
     struct wm_event queue[QUEUE];
     int qhead, qtail;
@@ -68,6 +72,8 @@ static struct wm_window *last_header_win;
 static uint32_t last_header_ms;
 
 enum { E_LEFT = 1, E_RIGHT = 2, E_TOP = 4, E_BOTTOM = 8 };
+
+static void shadow_alloc(struct wm_window *w);
 
 static const struct theme *T(void)
 {
@@ -340,6 +346,7 @@ struct wm_window *wm_create(const char *title, int w, int h, int min_w, int min_
     win->min_w = min_w > 0 ? min_w : WM_MIN_W;
     win->min_h = min_h > 0 ? min_h : WM_MIN_H;
     win->content = (struct gfx_surface){ win->buf, 0, 0, bw };
+    shadow_alloc(win);          /* now, so an app's memory count isn't disturbed later */
 
     /* Centred; moved along while another window already sits there. */
     struct gfx_rect r = { area.x + (area.w - w) / 2, area.y + (area.h - h) / 2, w, h };
@@ -377,6 +384,8 @@ void wm_destroy(struct wm_window *w)
     z_remove(w);
     for (uint32_t off = 0; off < w->buf_bytes; off += PAGE_SIZE)
         pmm_free((uint32_t)w->buf + off);
+    for (uint32_t off = 0; w->shadow && off < w->shadow_bytes; off += PAGE_SIZE)
+        pmm_free((uint32_t)w->shadow + off);
     w->used = 0;
     if (hover_win == w)
         hover_win = 0, hover_btn = NONE;
@@ -725,6 +734,83 @@ static uint32_t shadow_strength(const struct wm_window *w)
     return w == focus ? 96 : 60;
 }
 
+/* The shadow, made once per window size and look rather than on every
+ * redraw: gfx_shadow's 8 soft layers drawn onto white in a scratch surface,
+ * kept as one byte of darkness per pixel. Drawing it is then one pass. */
+#define SM (SHADOW + 6)         /* how far it reaches past the window */
+
+static uint32_t *shadow_scratch;    /* made with the first window, kept */
+
+/* With the window: the map's memory (and the scratch surface, once). */
+static void shadow_alloc(struct wm_window *w)
+{
+    uint32_t most = (uint32_t)((area.w + 2 * SM) * (area.h + 2 * SM));
+    if (!shadow_scratch)
+        shadow_scratch = (uint32_t *)pmm_alloc_contiguous((most * 4 + PAGE_SIZE - 1) / PAGE_SIZE);
+    w->shadow_bytes = (most + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    w->shadow = (uint8_t *)pmm_alloc_contiguous(w->shadow_bytes / PAGE_SIZE);
+    w->shadow_strength = 0;
+}
+
+static int shadow_map(struct wm_window *w)
+{
+    uint32_t *scratch = shadow_scratch;
+    uint32_t strength = shadow_strength(w);
+    if (w->shadow && w->shadow_w == w->r.w && w->shadow_h == w->r.h && w->shadow_strength == strength)
+        return 1;
+    int mw = w->r.w + 2 * SM, mh = w->r.h + 2 * SM;
+    uint32_t most = (uint32_t)((area.w + 2 * SM) * (area.h + 2 * SM));
+    if ((uint32_t)(mw * mh) > most)
+        return 0;
+    if (!scratch || !w->shadow)
+        return 0;
+    struct gfx_surface t = { scratch, mw, mh, mw };
+    gfx_fill_rect(&t, 0, 0, mw, mh, 0xffffff);
+    gfx_shadow(&t, SM, SM, w->r.w, w->r.h, WM_RADIUS, SHADOW, strength);
+    for (int i = 0; i < mw * mh; i++)
+        w->shadow[i] = (uint8_t)(255 - (scratch[i] & 0xff));
+    w->shadow_w = w->r.w;
+    w->shadow_h = w->r.h;
+    w->shadow_strength = strength;
+    return 1;
+}
+
+static inline uint32_t darken(uint32_t p, uint32_t a)
+{
+    uint32_t k = 256 - a;
+    return (((p & 0xff00ff) * k >> 8) & 0xff00ff) | (((p & 0x00ff00) * k >> 8) & 0x00ff00);
+}
+
+/* Darken around the window by its map: the four bands outside it, plus the
+ * corners' squares inside it (the window covers the rest of those). */
+static void draw_shadow(struct gfx_surface *dst, int ox, int oy, struct wm_window *w)
+{
+    if (!shadow_map(w)) {
+        gfx_shadow(dst, w->r.x - ox, w->r.y - oy, w->r.w, w->r.h, WM_RADIUS, SHADOW,
+                   shadow_strength(w));
+        return;
+    }
+    struct gfx_rect r = w->r;
+    int mw = r.w + 2 * SM, R = WM_RADIUS;
+    struct gfx_rect bands[4] = {
+        { r.x - SM, r.y - SM, mw, SM + R },
+        { r.x - SM, r.y + r.h - R, mw, SM + R },
+        { r.x - SM, r.y + R, SM + R, r.h - 2 * R },
+        { r.x + r.w - R, r.y + R, SM + R, r.h - 2 * R },
+    };
+    struct gfx_rect view = { ox, oy, dst->w, dst->h };
+    for (int b = 0; b < 4; b++) {
+        struct gfx_rect c = gfx_rect_intersect(bands[b], view);
+        for (int y = c.y; y < c.y + c.h; y++) {
+            const uint8_t *m = w->shadow + (y - (r.y - SM)) * mw - (r.x - SM);
+            uint32_t *p = dst->px + (y - oy) * dst->stride - ox;
+            for (int x = c.x; x < c.x + c.w; x++)
+                if (m[x])
+                    p[x] = darken(p[x], m[x]);
+        }
+    }
+}
+
 void wm_draw(struct gfx_surface *dst, int ox, int oy)
 {
     struct gfx_rect view = { ox, oy, dst->w, dst->h };
@@ -733,8 +819,7 @@ void wm_draw(struct gfx_surface *dst, int ox, int oy)
         if (w->minimised || w->hidden || gfx_rect_empty(gfx_rect_intersect(wm_bounds(w), view)))
             continue;
         if (!w->maximised)
-            gfx_shadow(dst, w->r.x - ox, w->r.y - oy, w->r.w, w->r.h, WM_RADIUS, SHADOW,
-                       shadow_strength(w));
+            draw_shadow(dst, ox, oy, w);
         if (!gfx_rect_empty(gfx_rect_intersect(w->r, view)))
             wm_draw_one(dst, ox, oy, w, w->r);
     }
