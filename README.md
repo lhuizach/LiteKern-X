@@ -5,7 +5,7 @@
 <h1 align="center">LiteKern X</h1>
 
 <p align="center">
-  A small operating system, written from scratch, for the ASUS Eee PC 1000HE netbook.
+  A lightweight Linux-based desktop system with its own GUI, built for the ASUS Eee PC 1000HE netbook.
 </p>
 
 <p align="center">
@@ -14,9 +14,9 @@
 
 ## What is it?
 
-LiteKern X is a complete operating system for one 2009 netbook, the ASUS Eee PC 1000HE. There's no Linux or Windows underneath: everything, from the code that starts the machine to the windows on the screen, is written for this project.
-
-It boots in about a second to a clean, modern desktop with a dock, an app menu, and windows you can move around, like on Windows or GNOME.
+LiteKern X is a small, fast desktop system for one 2009 netbook, the ASUS Eee PC 1000HE (Intel Atom N270, 32-bit x86).
+It runs on the Linux kernel, which handles the hardware: Ethernet, Wi-Fi and everything else. On top of that sits LiteKern's own desktop: a dock, an app menu, and windows you can move around, like on Windows or GNOME. The look, the window handling and the apps are all written for this project.
+LiteKern X is a clean-slate rewrite of LiteKern, which was a from-scratch kernel. It keeps v1's app model (KERN86).
 
 ## Screenshots
 
@@ -41,20 +41,24 @@ It boots in about a second to a clean, modern desktop with a dock, an app menu, 
 
 ## What it can do
 
-- **Starts fast:** about a second from the boot menu to the desktop.
-- **Real windows:** move them, resize them, minimise, maximise or snap them to half the screen, with several apps open at once.
+- **Linux underneath:** the Linux kernel provides hardware support, so drivers just work.
+- **Networking:** Ethernet and Wi-Fi.
+- **Real windows:** move them, minimise, maximise with several apps open at once. Windows will soon run on X11 (see STATUS).
 - **A dock and an app menu:** favourites stay in the dock; open apps show a dot underneath.
-- **Apps:**
-  - **Files** browses the USB stick, makes folders and files, renames and deletes them, and opens text files.
-  - **Calculator** does exact decimal sums.
-  - **Settings** switches between dark and light, six accent colours and five backgrounds.
-  - **Log** shows what the system is doing.
+- **Web browser:** a custom browser built on NetSurf, with JavaScript support coming (see STATUS).
+
+**Apps:**
+
+- **Files** browses the hard drive, makes folders and files, renames and deletes them, and opens text files (Max 64KB) and images.
+- **Calculator** does exact decimal sums.
+- **Settings** switches between dark and light, six accent colours and five backgrounds, network settings, user settings, system settings.
+- **Log** shows what the system is doing.
 - **Stays up:** if an app crashes or freezes, only that app closes.
-- **Shut down and restart** from the power menu.
+- Shut down and restart from the power menu.
 
 ## Try it
 
-There's no download yet; the first release is coming (see Status). For now you build it yourself on Windows, using WSL:
+There's no download yet; the first release is coming (see STATUS). For now you build it yourself on Windows, using WSL:
 
 1. Install [WSL](https://learn.microsoft.com/windows/wsl/install) with Ubuntu.
 2. In this folder, open PowerShell and run `wsl sudo bash tools/setup-wsl.sh` once.
@@ -64,24 +68,32 @@ To run it on a real Eee PC 1000HE, see [Testing on the Eee PC](docs/HARDWARE-TES
 
 ## Status
 
-LiteKern X is a work in progress.
+# LiteKern X is a work in progress.
 
-- **Done:**
-  - Booting on the real Eee PC.
-  - The desktop, windows and apps.
-  - Themes and wallpapers.
-- **Next:**
-  - A full test on the real Eee PC.
-  - The first release: a download, a website and documentation.
-- **Later:**
-  - Battery status, sound and USB.
+**Done:**
 
-The full plan is in [`LiteKernX-Roadmap/`](LiteKernX-Roadmap/).
+- Moved onto the Linux kernel.
+- Ethernet and Wi-Fi.
+- The desktop, windows and apps.
+- Themes and wallpapers.
+
+**In progress:**
+
+- X11 window support.
+- JavaScript in the browser.
+
+**Next:**
+
+- The first release: a download, a website and documentation.
+
+**Later:**
+
+- Audio
+
+The full plan is in LiteKernX-Roadmap/.
 
 ## For developers
 
 - [Developing LiteKern X](docs/DEVELOPING.md): building, testing, the VMs and where everything is
 - [Making an app](docs/APPS.md): write your own app for LiteKern X
 - [The roadmap](LiteKernX-Roadmap/): what's done and what's next
-
-LiteKern X is a clean-slate rewrite of LiteKern v1, keeping its app model (KERN86).
